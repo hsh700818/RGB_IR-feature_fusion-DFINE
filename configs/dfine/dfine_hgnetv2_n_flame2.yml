@@ -1,0 +1,89 @@
+# configs/dfine/dfine_hgnetv2_n_flame2.yml
+
+__include__: [
+  '../dataset/coco_detection.yml',
+  '../runtime.yml',
+  './include/dataloader.yml',
+  './include/optimizer.yml',
+  './include/dfine_hgnetv2.yml',
+]
+
+# 针对 FLAME2_DT 数据集的任务配置
+task: detection
+num_classes: 2  # 0: fire, 1: smoke
+remap_mscoco_category: False
+
+output_dir: ./output/debug_test
+
+# 模型组件实例化映射
+DFINE:
+  backbone: HGNetv2
+  encoder: HybridEncoder
+  decoder: DFINETransformer # 修正名称以匹配下方配置块
+
+# 骨干网络配置
+HGNetv2:
+  name: 'B0'  # 修正为大写以避免 KeyError
+  return_idx: [1, 2, 3] # P3, P4, P5 特征图
+  freeze_at: -1
+  freeze_norm: False
+  use_lab: True
+
+# 混合编码器配置
+HybridEncoder:
+  in_channels: [256, 512, 1024] # 对应 HGNetv2-B0 的 [P3, P4, P5] 通道数
+  feat_strides: [8, 16, 32]
+  hidden_dim: 128
+  use_encoder_idx: [1]
+  dim_feedforward: 512
+  expansion: 0.34
+  depth_mult: 0.5
+
+# 解码器（Transformer）配置
+DFINETransformer:
+  feat_channels: [128, 128, 128]
+  feat_strides: [8, 16, 32]
+  hidden_dim: 128
+  dim_feedforward: 512
+  num_levels: 3
+  num_layers: 3
+  eval_idx: -1
+  num_points: [4, 4, 4]
+
+# 优化器配置（继承自 coco_n）
+optimizer:
+  type: AdamW
+  params:
+    -
+      params: '^(?=.*backbone)(?!.*norm|bn).*$'
+      lr: 0.0004
+    -
+      params: '^(?=.*backbone)(?=.*norm|bn).*$'
+      lr: 0.0004
+      weight_decay: 0.
+    -
+      params: '^(?=.*(?:encoder|decoder))(?=.*(?:norm|bn|bias)).*$'
+      weight_decay: 0.
+  lr: 0.0008
+  betas: [0.9, 0.999]
+  weight_decay: 0.0001
+
+# 训练周期设置
+epochs: 160
+train_dataloader:
+  total_batch_size: 16 # 双流模型建议从 16 开始尝试，避免显存溢出
+  dataset:
+    img_folder: "/root/autodl-tmp/Flame2_DL/images_rgb/train"
+    ann_file: "/root/autodl-tmp/Flame2_DL/annotations/instances_train.json"
+    transforms:
+      policy:
+        epoch: 148
+  collate_fn:
+    stop_epoch: 148
+    ema_restart_decay: 0.9999
+
+val_dataloader:
+  total_batch_size: 16
+  dataset:
+    img_folder: "/root/autodl-tmp/Flame2_DL/images_rgb/val"
+    ann_file: "/root/autodl-tmp/Flame2_DL/annotations/instances_val.json"
