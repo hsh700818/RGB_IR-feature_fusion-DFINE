@@ -1,6 +1,9 @@
 output/
 weight/
+weights_1/
 *.pyc
 wandb/
 *.pth
 *.onnx
+inference_images_1/
+inference_results/
