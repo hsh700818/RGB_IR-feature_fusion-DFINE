@@ -73,8 +73,8 @@ epochs: 160
 train_dataloader:
   total_batch_size: 16 # 双流模型建议从 16 开始尝试，避免显存溢出
   dataset:
-    img_folder: "/root/autodl-tmp/Flame2_DL/images_rgb/train"
-    ann_file: "/root/autodl-tmp/Flame2_DL/annotations/instances_train.json"
+    img_folder: "/root/rivermind-data/Flame2_DT/images_rgb/train"
+    ann_file: "/root/rivermind-data/Flame2_DT/annotations/instances_train.json"
     transforms:
       policy:
         epoch: 148
@@ -85,5 +85,5 @@ train_dataloader:
 val_dataloader:
   total_batch_size: 16
   dataset:
-    img_folder: "/root/autodl-tmp/Flame2_DL/images_rgb/val"
-    ann_file: "/root/autodl-tmp/Flame2_DL/annotations/instances_val.json"
+    img_folder: "/root/rivermind-data/Flame2_DT/images_rgb/val"
+    ann_file: "/root/rivermind-data/Flame2_DT/annotations/instances_val.json"

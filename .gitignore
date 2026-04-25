@@ -5,5 +5,5 @@ weights_1/
 wandb/
 *.pth
 *.onnx
-inference_images_1/
 inference_results/
+.ipynb_checkpoints/
