@@ -1,0 +1,73 @@
+__include__: [
+  '../dataset/coco_detection.yml', # 继承基础 COCO 定义
+  '../runtime.yml',
+  './include/dataloader.yml',
+  './include/optimizer.yml',
+  './include/dfine_hgnetv2.yml',
+]
+
+# 1. 基础任务定义
+num_classes: 5
+remap_mscoco_category: False
+output_dir: ./output/dfine_n_dronevehicle_fusion
+
+# 2. 模型架构参数 (严格对齐你提供的 N 版本)
+DFINE:
+  backbone: HGNetv2
+
+HGNetv2:
+  name: 'B0'
+  return_idx: [2, 3] # 仅返回 P4, P5
+  freeze_at: -1
+  freeze_norm: False
+  use_lab: True
+
+HybridEncoder:
+  in_channels: [512, 1024] # P4: 512, P5: 1024
+  feat_strides: [16, 32]
+  hidden_dim: 128
+  use_encoder_idx: [1]
+  dim_feedforward: 512
+  expansion: 0.34
+  depth_mult: 0.5
+
+DFINETransformer:
+  feat_channels: [128, 128]
+  feat_strides: [16, 32]
+  hidden_dim: 128
+  dim_feedforward: 512
+  num_levels: 2 # 只有 2 层
+  num_layers: 3 # Nano 版本特有的 3 层 Decoder
+  eval_idx: -1
+  num_points: [6, 6]
+
+# 3. 数据集路径
+train_dataloader:
+  dataset:
+    img_folder: /root/autodl-tmp/DroneVehicle/train/visible
+    ann_file: /root/autodl-tmp/DroneVehicle/annotations/instances_train.json
+    return_masks: False
+  shuffle: True
+  total_batch_size: 16 # 双流显存压力大，Nano 版本 16 比较安全
+  num_workers: 4
+
+val_dataloader:
+  dataset:
+    img_folder: /root/autodl-tmp/DroneVehicle/val/visible
+    ann_file: /root/autodl-tmp/DroneVehicle/annotations/instances_val.json
+  shuffle: False
+  total_batch_size: 4 # 防止验证时 OOM
+  num_workers: 4
+
+# 4. 优化器策略 (针对新加的融合模块 IAM, GLSA)
+optimizer:
+  type: AdamW
+  params:
+    # 针对主干网络保持较低学习率
+    - {params: '^(?=.*backbone)(?!.*norm|bn).*$', lr: 0.00004}
+    # 针对新加的融合层和光照感知层，给更高的学习率以快速收敛
+    - {params: '^(?=.*(?:fusion_layers|glsa|illum_extract)).*$', lr: 0.0008}
+    # 针对 Encoder/Decoder
+    - {params: '^(?=.*(?:encoder|decoder))(?=.*(?:norm|bn|bias)).*$', weight_decay: 0.}
+    - {params: '^(?=.*(?:encoder|decoder))(?!.*(?:norm|bn|bias)).*$', lr: 0.0004}
+  weight_decay: 0.0001

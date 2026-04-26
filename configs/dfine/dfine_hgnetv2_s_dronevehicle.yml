@@ -1,0 +1,70 @@
+__include__: [
+  '../dataset/coco_detection.yml',
+  '../runtime.yml',
+  './include/dataloader.yml',
+  './include/optimizer.yml',
+  './include/dfine_hgnetv2.yml',
+]
+
+# 1. 基础任务定义
+num_classes: 5
+remap_mscoco_category: False
+output_dir: ./output/dfine_s_dronevehicle_fusion
+
+# 2. S 版本模型架构参数 (增加尺度与容量)
+DFINE:
+  backbone: HGNetv2
+
+HGNetv2:
+  name: 'B0'
+  return_idx: [1, 2, 3] # 关键：返回 P3, P4, P5 三层特征
+  freeze_at: -1
+  freeze_norm: False
+  use_lab: True
+
+HybridEncoder:
+  in_channels: [256, 512, 1024] # 对应 P3, P4, P5 的通道数
+  feat_strides: [8, 16, 32]
+  hidden_dim: 256              # 隐藏层维度从 128 翻倍至 256
+  use_encoder_idx: [2]
+  dim_feedforward: 1024        # 前馈网络维度增加
+  expansion: 0.5
+  depth_mult: 0.34
+
+DFINETransformer:
+  feat_channels: [256, 256, 256]
+  feat_strides: [8, 16, 32]
+  hidden_dim: 256
+  dim_feedforward: 1024
+  num_levels: 3                # 增加到 3 个尺度层
+  num_layers: 6                # 解码器层数从 3 增加到 6，显著提升学习能力
+  eval_idx: -1
+  num_points: [4, 4, 4]
+
+# 3. 数据集路径 (AutoDL 专用)
+train_dataloader:
+  dataset:
+    img_folder: /root/autodl-tmp/DroneVehicle/train/trainimg
+    ann_file: /root/autodl-tmp/DroneVehicle/instances_train_rgb.json
+    return_masks: False
+  shuffle: True
+  total_batch_size: 8         # S版本模型较大，双流显存占用高，建议设为 8
+  num_workers: 4
+
+val_dataloader:
+  dataset:
+    img_folder: /root/autodl-tmp/DroneVehicle/val/valimg
+    ann_file: /root/autodl-tmp/DroneVehicle/instances_val_rgb.json
+  shuffle: False
+  total_batch_size: 1         # 验证时设为 1 最保险，防止 OOM
+  num_workers: 4
+
+# 4. 优化器策略 (针对 S 版本微调)
+optimizer:
+  type: AdamW
+  params:
+    - {params: '^(?=.*backbone)(?!.*norm|bn).*$', lr: 0.00004}
+    - {params: '^(?=.*(?:fusion_layers|glsa|illum_extract)).*$', lr: 0.0006}
+    - {params: '^(?=.*(?:encoder|decoder))(?=.*(?:norm|bn|bias)).*$', weight_decay: 0.}
+    - {params: '^(?=.*(?:encoder|decoder))(?!.*(?:norm|bn|bias)).*$', lr: 0.0003}
+  weight_decay: 0.0001
