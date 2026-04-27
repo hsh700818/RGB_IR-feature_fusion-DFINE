@@ -6,4 +6,4 @@ wandb/
 *.pth
 *.onnx
 inference_results/
-.ipynb_checkpoints/
+.ipynb_checkpoints/.ipynb_checkpoints/
