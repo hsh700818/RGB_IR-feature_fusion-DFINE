@@ -192,8 +192,11 @@ class CocoDetection(FasterCocoDetection, DetDataset):
         target_dict["idx"] = torch.tensor([idx])
         
         if "boxes" in target_dict:
+            # ConvertCocoPolysToMask returns rotated boxes in (cx, cy, w, h, angle).
+            # Mark the first four coordinates as CXCYWH so ConvertBoxes(normalize=True)
+            # divides (cx, w) by image width and (cy, h) by image height correctly.
             target_dict["boxes"] = convert_to_tv_tensor(
-                target_dict["boxes"], key="boxes", spatial_size=img_v.size[::-1]
+                target_dict["boxes"], key="boxes", box_format="cxcywh", spatial_size=img_v.size[::-1]
             )
         return img_6ch, target_dict
 
