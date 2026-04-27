@@ -2,7 +2,7 @@ import os
 import torch
 import torchvision
 import torchvision.transforms.functional as F
-from PIL import Image
+from PIL import Image, ImageFile
 import numpy as np
 
 from ...core import register
@@ -12,6 +12,7 @@ from faster_coco_eval.utils.pytorch import FasterCocoDetection
 
 torchvision.disable_beta_transforms_warning()
 Image.MAX_IMAGE_PIXELS = None
+ImageFile.LOAD_TRUNCATED_IMAGES = True
 
 __all__ = ["CocoDetection", "mscoco_category2name", "mscoco_category2label", "mscoco_label2category"]
 
