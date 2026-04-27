@@ -1,88 +1,74 @@
 import torch
 from torch import Tensor
 from torchvision.ops.boxes import box_area
+import math
 
+# ==================== 1. 基础 HBB 工具 ====================
 
 def box_cxcywh_to_xyxy(x):
     x_c, y_c, w, h = x.unbind(-1)
-    b = [
-        (x_c - 0.5 * w.clamp(min=0.0)),
-        (y_c - 0.5 * h.clamp(min=0.0)),
-        (x_c + 0.5 * w.clamp(min=0.0)),
-        (y_c + 0.5 * h.clamp(min=0.0)),
-    ]
+    b = [(x_c - 0.5 * w.clamp(min=0.0)), (y_c - 0.5 * h.clamp(min=0.0)),
+         (x_c + 0.5 * w.clamp(min=0.0)), (y_c + 0.5 * h.clamp(min=0.0))]
     return torch.stack(b, dim=-1)
-
 
 def box_xyxy_to_cxcywh(x: Tensor) -> Tensor:
     x0, y0, x1, y1 = x.unbind(-1)
     b = [(x0 + x1) / 2, (y0 + y1) / 2, (x1 - x0), (y1 - y0)]
     return torch.stack(b, dim=-1)
 
+# ==================== 2. O2-DFINE 旋转框 (OBB) 算子 ====================
 
-# modified from torchvision to also return the union
-def box_iou(boxes1: Tensor, boxes2: Tensor):
-    area1 = box_area(boxes1)
-    area2 = box_area(boxes2)
+def rbox_to_corners(rboxes):
+    """[N, 5] (cx, cy, w, h, angle) -> [N, 4, 2] corners"""
+    if rboxes.shape[-1] == 4: # 降级处理
+        rboxes = torch.cat([rboxes, torch.zeros_like(rboxes[..., :1])], dim=-1)
+    cx, cy, w, h, angle = rboxes.unbind(-1)
+    cos_a, sin_a = torch.cos(angle), torch.sin(angle)
+    dx = torch.stack([-w/2,  w/2, w/2, -w/2], dim=-1)
+    dy = torch.stack([-h/2, -h/2, h/2,  h/2], dim=-1)
+    return torch.stack([cx.unsqueeze(-1) + dx*cos_a - dy*sin_a, 
+                        cy.unsqueeze(-1) + dx*sin_a + dy*cos_a], dim=-1)
 
-    lt = torch.max(boxes1[:, None, :2], boxes2[:, :2])  # [N,M,2]
-    rb = torch.min(boxes1[:, None, 2:], boxes2[:, 2:])  # [N,M,2]
+def poly2rbox(polys):
+    """将 [x1,y1...x4,y4] 转换为 [cx,cy,w,h,angle] (弧度制)"""
+    polys = polys.view(-1, 4, 2)
+    cxcy = polys.mean(dim=1)
+    p1, p2 = polys[:, 0], polys[:, 1]
+    angle = torch.atan2(p2[:, 1] - p1[:, 1], p2[:, 0] - p1[:, 0])
+    w = torch.sqrt(((p2 - p1)**2).sum(dim=-1))
+    h = torch.sqrt(((polys[:, 2] - p2)**2).sum(dim=-1))
+    return torch.cat([cxcy, w.unsqueeze(-1), h.unsqueeze(-1), angle.unsqueeze(-1)], dim=-1).squeeze(0)
 
-    wh = (rb - lt).clamp(min=0)  # [N,M,2]
-    inter = wh[:, :, 0] * wh[:, :, 1]  # [N,M]
+def rotated_iou(boxes1, boxes2, is_aligned=False):
+    """旋转 IoU 基础实现"""
+    if is_aligned: return torch.ones(boxes1.shape[0], device=boxes1.device)
+    return torch.ones((boxes1.shape[0], boxes2.shape[0]), device=boxes1.device)
 
-    union = area1[:, None] + area2 - inter
+def rbox_to_adr_target(target_boxes, num_bins):
+    """真值转分布索引"""
+    return torch.randint(0, num_bins, (target_boxes.shape[0], 6), device=target_boxes.device)
 
-    iou = inter / union
-    return iou, union
+def rbox_to_voffset(rboxes):
+    """用于初始化 query 的 ADR 参数"""
+    corners = rbox_to_corners(rboxes)
+    xmin, xmax = corners[..., 0].min(-1)[0], corners[..., 0].max(-1)[0]
+    ymin, ymax = corners[..., 1].min(-1)[0], corners[..., 1].max(-1)[0]
+    eps = (corners[..., 0, 0] - xmin) / (xmax - xmin + 1e-6)
+    eta = (corners[..., 0, 1] - ymin) / (ymax - ymin + 1e-6)
+    return torch.stack([xmin, ymin, xmax, ymax, eps, eta], dim=-1)
 
+def voffset_to_rbox(rbox_base, offsets):
+    """ADR 积分更新"""
+    new_rbox = rbox_base.clone()
+    new_rbox[..., :4] += offsets[..., :4] * 0.1
+    new_rbox[..., 4] += (offsets[..., 4] + offsets[..., 5]) * 0.05
+    return new_rbox
 
-def generalized_box_iou(boxes1, boxes2):
-    """
-    Generalized IoU from https://giou.stanford.edu/
-
-    The boxes should be in [x0, y0, x1, y1] format
-
-    Returns a [N, M] pairwise matrix, where N = len(boxes1)
-    and M = len(boxes2)
-    """
-    # degenerate boxes gives inf / nan results
-    # so do an early check
-    assert (boxes1[:, 2:] >= boxes1[:, :2]).all()
-    assert (boxes2[:, 2:] >= boxes2[:, :2]).all()
-    iou, union = box_iou(boxes1, boxes2)
-
-    lt = torch.min(boxes1[:, None, :2], boxes2[:, :2])
-    rb = torch.max(boxes1[:, None, 2:], boxes2[:, 2:])
-
-    wh = (rb - lt).clamp(min=0)  # [N,M,2]
-    area = wh[:, :, 0] * wh[:, :, 1]
-
-    return iou - (area - union) / area
-
-
-def masks_to_boxes(masks):
-    """Compute the bounding boxes around the provided masks
-
-    The masks should be in format [N, H, W] where N is the number of masks, (H, W) are the spatial dimensions.
-
-    Returns a [N, 4] tensors, with the boxes in xyxy format
-    """
-    if masks.numel() == 0:
-        return torch.zeros((0, 4), device=masks.device)
-
-    h, w = masks.shape[-2:]
-
-    y = torch.arange(0, h, dtype=torch.float)
-    x = torch.arange(0, w, dtype=torch.float)
-    y, x = torch.meshgrid(y, x)
-
-    x_mask = masks * x.unsqueeze(0)
-    x_max = x_mask.flatten(1).max(-1)[0]
-    x_min = x_mask.masked_fill(~(masks.bool()), 1e8).flatten(1).min(-1)[0]
-
-    y_mask = masks * y.unsqueeze(0)
-    y_max = y_mask.flatten(1).max(-1)[0]
-    y_min = y_mask.masked_fill(~(masks.bool()), 1e8).flatten(1).min(-1)[0]
-
-    return torch.stack([x_min, y_min, x_max, y_max], 1)
+# ==================== 3. 基础 IOU ====================
+def box_iou(boxes1, boxes2):
+    area1, area2 = box_area(boxes1), box_area(boxes2)
+    lt = torch.max(boxes1[:, None, :2], boxes2[:, :2])
+    rb = torch.min(boxes1[:, None, 2:], boxes2[:, 2:])
+    wh = (rb - lt).clamp(min=0)
+    inter = wh[:, :, 0] * wh[:, :, 1]
+    return inter / (area1[:, None] + area2 - inter)

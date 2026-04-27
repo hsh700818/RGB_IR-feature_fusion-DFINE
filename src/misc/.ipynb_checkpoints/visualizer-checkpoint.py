@@ -50,12 +50,12 @@ def save_samples(samples: torch.Tensor, targets: List[Dict], output_dir: str, sp
         draw = ImageDraw.Draw(sample_visualization)
 
         # 3. 绘制标注
-        if 'boxes' in target:
+        if 'boxes' in target and len(target['boxes']) > 0:
             boxes = target['boxes'].clone()
             labels = target.get('labels', [0] * len(boxes))
 
-            # 核心修复点：根据数值量级判断是否需要缩放
-            # 如果最大值 <= 1.0，说明是归一化坐标，需要乘以图片尺寸
+            # --- 核心修复点：增加 len(boxes) > 0 的检查 ---
+            # 只有当框不为空时才计算 max()，否则默认为已归一化（或跳过）
             is_normalized_boxes = boxes.max() <= 1.01 
             
             if box_fmt != 'xyxy':
@@ -65,23 +65,20 @@ def save_samples(samples: torch.Tensor, targets: List[Dict], output_dir: str, sp
                 boxes[:, [0, 2]] *= orig_w
                 boxes[:, [1, 3]] *= orig_h
 
-            # 最终检查：确保 x1 <= x2 且 y1 <= y2，防止 PIL 报错
+            # 最终检查：确保 x1 <= x2 且 y1 <= y2
             for box, label in zip(boxes, labels):
                 x0, y0, x1, y1 = box.tolist()
                 
-                # 再次确保坐标顺序正确
                 left = min(x0, x1)
                 top = min(y0, y1)
                 right = max(x0, x1)
                 bottom = max(y0, y1)
                 
-                # 裁剪到图像边界
                 left = max(0, min(left, orig_w - 1))
                 right = max(0, min(right, orig_w - 1))
                 top = max(0, min(top, orig_h - 1))
                 bottom = max(0, min(bottom, orig_h - 1))
 
-                # 如果右边界仍小于等于左边界，跳过绘制
                 if right <= left or bottom <= top:
                     continue
 
@@ -104,6 +101,10 @@ def show_sample(sample):
     if image.shape[0] == 6: image = image[:3, ...]
     if isinstance(image, PIL.Image.Image): image = F.to_image_tensor(image)
     image = F.convert_dtype(image, torch.uint8)
-    annotated_image = draw_bounding_boxes(image, target["boxes"], colors="yellow", width=3)
-    plt.imshow(annotated_image.permute(1, 2, 0))
+    # 同样在这里增加判空逻辑防止 draw_bounding_boxes 报错
+    if len(target["boxes"]) > 0:
+        annotated_image = draw_bounding_boxes(image, target["boxes"], colors="yellow", width=3)
+        plt.imshow(annotated_image.permute(1, 2, 0))
+    else:
+        plt.imshow(image.permute(1, 2, 0))
     plt.show()

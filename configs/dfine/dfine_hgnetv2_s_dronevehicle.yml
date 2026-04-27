@@ -6,65 +6,98 @@ __include__: [
   './include/dfine_hgnetv2.yml',
 ]
 
-# 1. 基础任务定义
+# 0. 全局训练控制 (修正：warmup_epochs 必须放在顶层)
+epochs: 160
+warmup_epochs: 10
+use_amp: True
+seed: 42
+
+# 1. 任务定义
 num_classes: 5
 remap_mscoco_category: False
-output_dir: ./output/dfine_s_dronevehicle_fusion
+output_dir: ./output/dfine_s_dronevehicle_obb_fusion
 
-# 2. S 版本模型架构参数 (增加尺度与容量)
+# 2. 架构缩放 (S 版本: 3个尺度, 通道 256)
 DFINE:
   backbone: HGNetv2
+  # 指定使用我们重构后的类名
+  decoder: DFINETransformer
 
 HGNetv2:
   name: 'B0'
-  return_idx: [1, 2, 3] # 关键：返回 P3, P4, P5 三层特征
+  return_idx: [1, 2, 3] # P3, P4, P5
   freeze_at: -1
   freeze_norm: False
   use_lab: True
 
 HybridEncoder:
-  in_channels: [256, 512, 1024] # 对应 P3, P4, P5 的通道数
+  in_channels: [256, 512, 1024]
   feat_strides: [8, 16, 32]
-  hidden_dim: 256              # 隐藏层维度从 128 翻倍至 256
+  hidden_dim: 256
   use_encoder_idx: [2]
-  dim_feedforward: 1024        # 前馈网络维度增加
+  dim_feedforward: 1024
   expansion: 0.5
   depth_mult: 0.34
 
 DFINETransformer:
-  feat_channels: [256, 256, 256]
-  feat_strides: [8, 16, 32]
+  num_layers: 6
   hidden_dim: 256
-  dim_feedforward: 1024
-  num_levels: 3                # 增加到 3 个尺度层
-  num_layers: 6                # 解码器层数从 3 增加到 6，显著提升学习能力
+  num_bins: 16
   eval_idx: -1
+  # 旋转检测不需要极高数量的点，保持 4,4,4 均衡
   num_points: [4, 4, 4]
 
-# 3. 数据集路径 (AutoDL 专用)
+# 3. 损失函数与 ADR 分布配置 (旋转检测核心)
+DFINECriterion:
+  weight_dict: 
+    loss_vfl: 2.0     # 分类 (Varifocal Loss)
+    loss_bbox: 5.0    # 顶点 Chamfer 距离损失
+    loss_riou: 2.0    # 旋转 IoU 损失
+    loss_fgl: 1.0     # ADR 分布回归损失
+  losses: ['labels', 'rboxes', 'fgl']
+  num_bins: 16        # 细粒度分布 bin 数量
+
+# 4. 数据加载 (针对 DroneVehicle 路径和 6 通道输入优化)
 train_dataloader:
   dataset:
     img_folder: /root/autodl-tmp/DroneVehicle/train/trainimg
-    ann_file: /root/autodl-tmp/DroneVehicle/instances_train_rgb.json
+    ann_file: /root/autodl-tmp/DroneVehicle/instances_train.json
     return_masks: False
+    transforms:
+      ops:
+        - {type: RandomHorizontalFlip}
+        - {type: Resize, size: [640, 640]}
+        # 旋转框任务对归一化非常敏感
+        - {type: Normalize, mean: [0.485, 0.456, 0.406, 0.485, 0.456, 0.406], std: [0.229, 0.224, 0.225, 0.229, 0.224, 0.225]}
+        - {type: ConvertBoxes, fmt: cxcywh, normalize: True}
   shuffle: True
-  total_batch_size: 8         # S版本模型较大，双流显存占用高，建议设为 8
+  total_batch_size: 8
   num_workers: 4
+  collate_fn:
+    # 停止数据增强的时间点 (建议在总轮数前 10 轮停用)
+    stop_epoch: 150 
 
 val_dataloader:
   dataset:
     img_folder: /root/autodl-tmp/DroneVehicle/val/valimg
-    ann_file: /root/autodl-tmp/DroneVehicle/instances_val_rgb.json
+    ann_file: /root/autodl-tmp/DroneVehicle/instances_val.json
   shuffle: False
-  total_batch_size: 1         # 验证时设为 1 最保险，防止 OOM
+  total_batch_size: 1
   num_workers: 4
 
-# 4. 优化器策略 (针对 S 版本微调)
+# 5. 优化器与学习率策略 (适配旋转检测的慢收敛特性)
 optimizer:
   type: AdamW
   params:
+    # 骨干网络 (RGB & IR) 使用较低学习率
     - {params: '^(?=.*backbone)(?!.*norm|bn).*$', lr: 0.00004}
-    - {params: '^(?=.*(?:fusion_layers|glsa|illum_extract)).*$', lr: 0.0006}
-    - {params: '^(?=.*(?:encoder|decoder))(?=.*(?:norm|bn|bias)).*$', weight_decay: 0.}
-    - {params: '^(?=.*(?:encoder|decoder))(?!.*(?:norm|bn|bias)).*$', lr: 0.0003}
+    # 你的创新融合模块、GLSA、光照感知模块使用较高学习率
+    - {params: '^(?=.*(?:fusion_layers|glsa|illum_extract)).*$', lr: 0.0004}
+    # Encoder 和 Decoder 使用基准学习率
+    - {params: '^(?=.*(?:encoder|decoder))(?!.*(?:norm|bn|bias)).*$', lr: 0.0002}
   weight_decay: 0.0001
+
+lr_scheduler:
+  type: MultiStepLR
+  milestones: [120, 150] # 在第 120 和 150 轮降低学习率
+  gamma: 0.1

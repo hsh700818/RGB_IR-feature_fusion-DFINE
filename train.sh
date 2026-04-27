@@ -5,8 +5,8 @@ export OMP_NUM_THREADS=1
 export PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
 
 # 2. 路径设置 (请确保路径与你服务器一致)
-CONFIG="configs/dfine/dfine_hgnetv2_n_flame2.yml"
-OUTPUT_DIR="./output/flame2_add_moudule_80e"
+CONFIG="configs/dfine/dfine_hgnetv2_s_dronevehicle.yml"
+OUTPUT_DIR="./output/dronevehicle_s_obb_fusion_v1"
 # RESUME_PATH="./output/flame2_160e/last.pth"
 
 # 3. 训练参数定义
@@ -14,11 +14,7 @@ OUTPUT_DIR="./output/flame2_add_moudule_80e"
 # stop_epoch=148: 在148轮关闭增强，触发D-FINE特有的FDR细化
 # total_batch_size=16: 训练批次 (双流模型显存压力大，16比较稳)
 # val_batch_size=4: 验证批次 [关键：调低验证批次以防止第10轮验证时OOM]
-UPDATES="epochs=80 \
-train_dataloader.collate_fn.stop_epoch=68 \
-train_dataloader.total_batch_size=16 \
-val_dataloader.total_batch_size=4 \
-checkpoint='./output/flame2_160e/last.pth'"
+UPDATES="checkpoint=weights_1/dfine_s_coco.pth"
 
 echo "==================== 开始 D-FINE 双流训练 ===================="
 echo "配置文件: $CONFIG"
