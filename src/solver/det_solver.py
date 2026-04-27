@@ -20,8 +20,8 @@ from .det_engine import evaluate, train_one_epoch
 def _metric_first_value(value):
     """Return a scalar value for best-checkpoint comparison.
 
-    COCO metrics are lists, for example coco_eval_bbox[0].  Custom metrics such
-    as mAP50 and obb_mAP50 are floats.  The solver must support both forms.
+    COCO metrics are lists, for example coco_eval_bbox[0]. Custom metrics such
+    as mAP50 and obb_mAP50 are floats. The solver must support both forms.
     """
     if isinstance(value, torch.Tensor):
         if value.numel() == 1:
@@ -55,7 +55,12 @@ class DetSolver(BaseSolver):
         metric_names = ["AP50:95", "AP50", "AP75", "APsmall", "APmedium", "APlarge"]
         eval_freq = int(getattr(args, "eval_freq", 1))
         eval_freq = max(eval_freq, 1)
+
+        # For DroneVehicle OBB experiments, OBB AP@0.5 is the primary metric.
+        # HBB COCO evaluation can be enabled from config with eval_hbb: True.
         primary_metric = getattr(args, "primary_metric", "obb_mAP50")
+        eval_hbb = bool(getattr(args, "eval_hbb", False))
+        eval_obb = bool(getattr(args, "eval_obb", True))
 
         if self.use_wandb:
             import wandb
@@ -70,6 +75,8 @@ class DetSolver(BaseSolver):
         n_parameters, model_stats = stats(self.cfg)
         print(model_stats)
         print("-" * 42 + "Start training" + "-" * 43)
+        print(f"Evaluation settings: eval_freq={eval_freq}, eval_hbb={eval_hbb}, eval_obb={eval_obb}, primary_metric={primary_metric}")
+
         top1 = 0.0
         best_stat = {"epoch": -1}
 
@@ -85,6 +92,8 @@ class DetSolver(BaseSolver):
                 self.last_epoch,
                 self.use_wandb,
                 output_dir=self.output_dir,
+                eval_hbb=eval_hbb,
+                eval_obb=eval_obb,
             )
             for k, v in test_stats.items():
                 metric_value = _metric_first_value(v)
@@ -156,6 +165,8 @@ class DetSolver(BaseSolver):
                     epoch,
                     self.use_wandb,
                     output_dir=self.output_dir,
+                    eval_hbb=eval_hbb,
+                    eval_obb=eval_obb,
                 )
 
                 compare_key = primary_metric if primary_metric in test_stats else None
@@ -224,7 +235,7 @@ class DetSolver(BaseSolver):
                 with (self.output_dir / "log.txt").open("a") as f:
                     f.write(json.dumps(log_stats) + "\n")
 
-                if coco_evaluator is not None:
+                if coco_evaluator is not None and eval_hbb:
                     (self.output_dir / "eval").mkdir(exist_ok=True)
                     if "bbox" in coco_evaluator.coco_eval:
                         filenames = ["latest.pth"]
@@ -242,6 +253,9 @@ class DetSolver(BaseSolver):
 
     def val(self):
         self.eval()
+        args = self.cfg
+        eval_hbb = bool(getattr(args, "eval_hbb", False))
+        eval_obb = bool(getattr(args, "eval_obb", True))
 
         module = self.ema.module if self.ema else self.model
         test_stats, coco_evaluator = evaluate(
@@ -254,9 +268,11 @@ class DetSolver(BaseSolver):
             epoch=-1,
             use_wandb=False,
             output_dir=self.output_dir,
+            eval_hbb=eval_hbb,
+            eval_obb=eval_obb,
         )
 
-        if self.output_dir:
+        if self.output_dir and coco_evaluator is not None and eval_hbb:
             dist_utils.save_on_master(
                 coco_evaluator.coco_eval["bbox"].eval, self.output_dir / "eval.pth"
             )
