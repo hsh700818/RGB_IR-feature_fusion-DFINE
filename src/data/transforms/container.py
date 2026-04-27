@@ -48,6 +48,20 @@ class Compose(T.Compose):
         self.policy = policy
         self.global_samples = 0
 
+    def _apply_transform(self, transform, sample):
+        """Apply transforms to multi-input samples such as (image, target, dataset).
+
+        torchvision Compose normally passes one object.  This project passes
+        image, target and dataset together, and the custom OBB transforms are
+        implemented as forward(self, *inputs).  Therefore tuple/list samples
+        must be unpacked at every transform step.
+        """
+        if isinstance(sample, (tuple, list)):
+            out = transform(*sample)
+        else:
+            out = transform(sample)
+        return out
+
     def forward(self, *inputs: Any) -> Any:
         return self.get_forward(self.policy["name"])(*inputs)
 
@@ -62,7 +76,7 @@ class Compose(T.Compose):
     def default_forward(self, *inputs: Any) -> Any:
         sample = inputs if len(inputs) > 1 else inputs[0]
         for transform in self.transforms:
-            sample = transform(sample)
+            sample = self._apply_transform(transform, sample)
         return sample
 
     def stop_epoch_forward(self, *inputs: Any):
@@ -76,7 +90,7 @@ class Compose(T.Compose):
             if type(transform).__name__ in policy_ops and cur_epoch >= policy_epoch:
                 pass
             else:
-                sample = transform(sample)
+                sample = self._apply_transform(transform, sample)
 
         return sample
 
@@ -92,7 +106,7 @@ class Compose(T.Compose):
             if type(transform).__name__ in policy_ops and self.global_samples >= policy_sample:
                 pass
             else:
-                sample = transform(sample)
+                sample = self._apply_transform(transform, sample)
 
         self.global_samples += 1
 
