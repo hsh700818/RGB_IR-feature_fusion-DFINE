@@ -6,18 +6,15 @@ __include__: [
   './include/dfine_hgnetv2.yml',
 ]
 
-# 0. 全局训练控制
 epochs: 160
 warmup_epochs: 10
 use_amp: True
 seed: 42
 
-# 1. 任务定义
 num_classes: 5
 remap_mscoco_category: True
 output_dir: ./output/dfine_s_dronevehicle_obb_fusion
 
-# 2. 架构缩放，S 版本，3 个尺度，通道 256
 DFINE:
   backbone: HGNetv2
   decoder: DFINETransformer
@@ -39,15 +36,28 @@ HybridEncoder:
   depth_mult: 0.34
 
 DFINETransformer:
-  num_layers: 6
+  num_classes: 5
   hidden_dim: 256
-  num_bins: 16
+  num_queries: 300
+  # HybridEncoder 输出 3 个 256 通道特征图，因此 decoder 输入通道也必须设为 [256, 256, 256]
+  feat_channels: [256, 256, 256]
+  feat_strides: [8, 16, 32]
+  num_levels: 3
+  nhead: 8
+  num_layers: 6
+  dim_feedforward: 1024
+  dropout: 0.0
+  activation: relu
   eval_idx: -1
-  num_points: [4, 4, 4]
+  aux_loss: True
+  learn_query_content: False
+  query_select_method: default
+  # 当前阶段先关闭 denoising，避免原始 4 维 DN box 与 5 维 OBB target 不兼容
+  num_denoising: 0
+  num_bins: 16
 
-# 3. 当前阶段只启用有效监督
-# 注意：当前 box_ops.py 中 rotated_iou 仍是占位实现，rbox_to_adr_target 仍是随机目标。
-# 因此先关闭 loss_riou 与 loss_fgl，避免无效损失误导训练日志。
+# 当前版本已恢复多尺度 transformer decoder，并加入 angle head。
+# loss_riou 和 loss_fgl 仍保持关闭，因为 rotated_iou 与 ADR target 还需要后续替换为真实实现。
 DFINECriterion:
   weight_dict:
     loss_vfl: 2.0
@@ -57,7 +67,6 @@ DFINECriterion:
   losses: ['labels', 'rboxes']
   num_bins: 16
 
-# 4. 数据加载，DroneVehicle RGB-IR 6 通道输入
 train_dataloader:
   dataset:
     img_folder: /root/autodl-tmp/DroneVehicle/train/trainimg
@@ -70,7 +79,6 @@ train_dataloader:
         - {type: Normalize, mean: [0.485, 0.456, 0.406, 0.485, 0.456, 0.406], std: [0.229, 0.224, 0.225, 0.229, 0.224, 0.225]}
         - {type: ConvertBoxes, fmt: cxcywh, normalize: True}
   shuffle: True
-  # RTX 4090 24GB 上当前模型只占约 6 到 7GB，可先提高到 16；若显存仍充足再尝试 24 或 32。
   total_batch_size: 16
   num_workers: 8
   collate_fn:
@@ -84,7 +92,6 @@ val_dataloader:
   total_batch_size: 1
   num_workers: 4
 
-# 5. 优化器与学习率策略
 optimizer:
   type: AdamW
   params:
