@@ -34,7 +34,14 @@ class DFINECriterion(nn.Module):
         target_classes = torch.full(src_logits.shape[:2], self.num_classes,
                                     dtype=torch.int64, device=src_logits.device)
         target_classes[idx] = target_classes_o
-        loss_ce = sigmoid_focal_loss(src_logits, target_classes, self.num_classes, num_boxes=num_boxes)
+
+        # sigmoid_focal_loss expects one-hot targets with the same shape as pred_logits:
+        # [batch_size, num_queries, num_classes].  The extra class id self.num_classes is
+        # the background placeholder and is removed after one-hot encoding.
+        target_onehot = F.one_hot(target_classes, num_classes=self.num_classes + 1)[..., :-1]
+        target_onehot = target_onehot.to(dtype=src_logits.dtype)
+
+        loss_ce = sigmoid_focal_loss(src_logits, target_onehot, num_boxes=num_boxes)
         return {'loss_vfl': loss_ce * self.weight_dict.get('loss_vfl', 1.0)}
 
     def loss_rboxes(self, outputs, targets, indices, num_boxes):
