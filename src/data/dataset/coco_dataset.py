@@ -43,22 +43,111 @@ class CocoDetection(FasterCocoDetection, DetDataset):
             img, target, _ = self._transforms(img, target, self)
         return img, target
 
+    def _resolve_visible_path(self, file_name):
+        """Resolve visible image paths for common DroneVehicle COCO layouts."""
+        base = os.path.basename(file_name)
+        candidates = []
+
+        if os.path.isabs(file_name):
+            candidates.append(file_name)
+        else:
+            candidates.append(os.path.join(self.img_folder, file_name))
+
+        candidates.extend([
+            os.path.join(self.img_folder, base),
+            os.path.join(self.img_folder, 'img', base),
+            os.path.join(self.img_folder, 'trainimg', base),
+            os.path.join(os.path.dirname(self.img_folder), 'img', base),
+            os.path.join(os.path.dirname(self.img_folder), 'trainimg', base),
+        ])
+
+        stem, ext = os.path.splitext(base)
+        for suffix in ['.jpg', '.JPG', '.jpeg', '.JPEG', '.png', '.PNG', '.bmp', '.BMP']:
+            alt = stem + suffix
+            candidates.extend([
+                os.path.join(self.img_folder, alt),
+                os.path.join(self.img_folder, 'img', alt),
+                os.path.join(self.img_folder, 'trainimg', alt),
+                os.path.join(os.path.dirname(self.img_folder), 'img', alt),
+                os.path.join(os.path.dirname(self.img_folder), 'trainimg', alt),
+            ])
+
+        seen = set()
+        unique_candidates = []
+        for p in candidates:
+            if p not in seen:
+                seen.add(p)
+                unique_candidates.append(p)
+
+        for p in unique_candidates:
+            if os.path.exists(p):
+                return p
+
+        raise FileNotFoundError(
+            "未找到可见光图像，COCO file_name='{}'。已尝试路径：\n{}".format(
+                file_name, "\n".join(unique_candidates[:30])
+            )
+        )
+
+    def _resolve_ir_path(self, path_v):
+        """Resolve paired infrared image paths for common DroneVehicle layouts."""
+        directory = os.path.dirname(path_v)
+        base = os.path.basename(path_v)
+        stem, ext = os.path.splitext(base)
+        parent = os.path.dirname(directory)
+
+        candidates = [
+            path_v.replace('trainimg', 'trainimgr'),
+            path_v.replace('/img/', '/imgr/'),
+            path_v.replace('\\img\\', '\\imgr\\'),
+            os.path.join(directory.replace('trainimg', 'trainimgr'), base),
+            os.path.join(directory.replace('img', 'imgr'), base),
+            os.path.join(parent, 'imgr', base),
+            os.path.join(parent, 'trainimgr', base),
+            os.path.join(directory, stem + 'r' + ext),
+            path_v.replace('.jpg', 'r.jpg'),
+            path_v.replace('.JPG', 'r.JPG'),
+            path_v.replace('.png', 'r.png'),
+            path_v.replace('.PNG', 'r.PNG'),
+        ]
+
+        for suffix in ['.jpg', '.JPG', '.jpeg', '.JPEG', '.png', '.PNG', '.bmp', '.BMP']:
+            candidates.extend([
+                os.path.join(parent, 'imgr', stem + suffix),
+                os.path.join(parent, 'trainimgr', stem + suffix),
+                os.path.join(parent, 'imgr', stem + 'r' + suffix),
+                os.path.join(parent, 'trainimgr', stem + 'r' + suffix),
+            ])
+
+        seen = set()
+        unique_candidates = []
+        for p in candidates:
+            if p not in seen:
+                seen.add(p)
+                unique_candidates.append(p)
+
+        for p in unique_candidates:
+            if os.path.exists(p):
+                return p
+
+        raise FileNotFoundError(
+            "未找到红外图像，可见光图像路径='{}'。已尝试路径：\n{}".format(
+                path_v, "\n".join(unique_candidates[:30])
+            )
+        )
+
     def load_item(self, idx):
         image_id = self.ids[idx]
         img_info = self.coco.loadImgs(image_id)[0]
         file_name = img_info['file_name']
         
-        path_v = os.path.join(self.img_folder, file_name)
+        path_v = self._resolve_visible_path(file_name)
         try:
             img_v = Image.open(path_v).convert('RGB')
         except OSError as e:
             raise OSError(f"可见光图像读取失败，可能文件损坏: {path_v}") from e
         
-        path_ir = path_v.replace('img', 'imgr')
-        if not os.path.exists(path_ir):
-            path_ir = path_v.replace('.jpg', 'r.jpg')
-        if not os.path.exists(path_ir):
-            raise FileNotFoundError(f"未找到红外图: {path_ir}")
+        path_ir = self._resolve_ir_path(path_v)
             
         try:
             img_ir = Image.open(path_ir).convert('RGB')
