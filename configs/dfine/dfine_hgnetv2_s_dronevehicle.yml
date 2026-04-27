@@ -10,6 +10,8 @@ epochs: 160
 warmup_epochs: 10
 use_amp: True
 seed: 42
+# 每 5 轮验证一次，避免每轮训练后都长时间卡在验证阶段。
+eval_freq: 5
 
 num_classes: 5
 remap_mscoco_category: True
@@ -39,7 +41,6 @@ DFINETransformer:
   num_classes: 5
   hidden_dim: 256
   num_queries: 300
-  # HybridEncoder 输出 3 个 256 通道特征图，因此 decoder 输入通道也必须设为 [256, 256, 256]
   feat_channels: [256, 256, 256]
   feat_strides: [8, 16, 32]
   num_levels: 3
@@ -52,12 +53,9 @@ DFINETransformer:
   aux_loss: True
   learn_query_content: False
   query_select_method: default
-  # 当前阶段先关闭 denoising，避免原始 4 维 DN box 与 5 维 OBB target 不兼容
   num_denoising: 0
   num_bins: 16
 
-# 当前版本已恢复多尺度 transformer decoder，并加入 angle head。
-# loss_riou 和 loss_fgl 仍保持关闭，因为 rotated_iou 与 ADR target 还需要后续替换为真实实现。
 DFINECriterion:
   weight_dict:
     loss_vfl: 2.0
@@ -89,8 +87,8 @@ val_dataloader:
     img_folder: /root/autodl-tmp/DroneVehicle/val/valimg
     ann_file: /root/autodl-tmp/DroneVehicle/instances_val.json
   shuffle: False
-  total_batch_size: 1
-  num_workers: 4
+  total_batch_size: 16
+  num_workers: 8
 
 optimizer:
   type: AdamW
