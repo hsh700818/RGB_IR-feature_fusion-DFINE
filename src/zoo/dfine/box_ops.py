@@ -58,12 +58,6 @@ def poly2rbox(polys):
 
 
 def _rbox_to_enclosing_xyxy(rboxes: Tensor) -> Tensor:
-    """Convert OBB to its enclosing HBB in xyxy format.
-
-    This is differentiable and is used as a safe fallback when mmcv/mmrotate
-    rotated IoU kernels are not available. It gives a real, non-constant IoU
-    signal, so loss_riou no longer stays at 0 by construction.
-    """
     corners = rbox_to_corners(rboxes)
     xmin = corners[..., 0].min(dim=-1).values
     ymin = corners[..., 1].min(dim=-1).values
@@ -83,25 +77,10 @@ def _pairwise_box_iou(boxes1: Tensor, boxes2: Tensor) -> Tensor:
     return inter / union.clamp(min=1e-6)
 
 
-def rotated_iou(boxes1, boxes2, is_aligned=False):
-    """Differentiable fallback IoU for 5D rotated boxes.
-
-    The previous placeholder returned all-ones, which made loss_riou exactly 0.
-    This implementation converts each rotated box to its enclosing horizontal
-    box and computes IoU. It is an approximation of rotated IoU, but it is stable,
-    differentiable, and does not require extra CUDA extensions.
-
-    Later, this function can be replaced by mmcv.ops.diff_iou_rotated or a true
-    polygon IoU kernel when your environment supports it.
-    """
-    if boxes1.numel() == 0 or boxes2.numel() == 0:
-        if is_aligned:
-            return boxes1.new_zeros((boxes1.shape[0],))
-        return boxes1.new_zeros((boxes1.shape[0], boxes2.shape[0]))
-
+def _hbb_iou_fallback(boxes1, boxes2, is_aligned=False):
+    """Only used when loss_riou is disabled or for emergency debugging."""
     hbb1 = _rbox_to_enclosing_xyxy(boxes1)
     hbb2 = _rbox_to_enclosing_xyxy(boxes2)
-
     if is_aligned:
         lt = torch.maximum(hbb1[:, :2], hbb2[:, :2])
         rb = torch.minimum(hbb1[:, 2:], hbb2[:, 2:])
@@ -111,8 +90,74 @@ def rotated_iou(boxes1, boxes2, is_aligned=False):
         area2 = (hbb2[:, 2] - hbb2[:, 0]).clamp(min=0) * (hbb2[:, 3] - hbb2[:, 1]).clamp(min=0)
         union = area1 + area2 - inter
         return inter / union.clamp(min=1e-6)
-
     return _pairwise_box_iou(hbb1, hbb2)
+
+
+def _mmcv_box_iou_rotated(boxes1, boxes2, is_aligned=False):
+    from mmcv.ops import box_iou_rotated
+
+    boxes1 = boxes1.contiguous().float()
+    boxes2 = boxes2.contiguous().float()
+    out = box_iou_rotated(boxes1, boxes2, mode="iou", aligned=is_aligned, clockwise=False)
+    return out.to(dtype=boxes1.dtype)
+
+
+def _mmcv_diff_iou_rotated_aligned(boxes1, boxes2):
+    """Use MMCV differentiable rotated IoU when available.
+
+    MMCV versions expose this operator with slightly different names.  We try
+    the common names first.  The aligned loss only needs IoU for matched pairs.
+    """
+    try:
+        from mmcv.ops import diff_iou_rotated_2d
+    except Exception:
+        try:
+            from mmcv.ops import diff_iou_rotated as diff_iou_rotated_2d
+        except Exception:
+            return None
+
+    boxes1_f = boxes1.contiguous().float()
+    boxes2_f = boxes2.contiguous().float()
+    out = diff_iou_rotated_2d(boxes1_f.unsqueeze(0), boxes2_f.unsqueeze(0))
+    out = out.squeeze(0)
+
+    if out.ndim == 2:
+        # Some versions return [N, N].  For aligned matched pairs use diagonal.
+        out = out.diag()
+    elif out.ndim > 1:
+        out = out.reshape(-1)
+    return out.to(dtype=boxes1.dtype)
+
+
+def rotated_iou(boxes1, boxes2, is_aligned=False):
+    """True rotated IoU for OBB training.
+
+    Priority:
+    1. For aligned matched pairs, use MMCV differentiable rotated IoU when the
+       installed mmcv provides diff_iou_rotated_2d / diff_iou_rotated.
+    2. Otherwise use MMCV box_iou_rotated, which computes true rotated IoU.
+
+    If mmcv is not installed, this function raises a clear error instead of
+    silently falling back to HBB IoU, because loss_riou should be a real OBB loss.
+    Temporarily set loss_riou: 0.0 if you need to train without mmcv.
+    """
+    if boxes1.numel() == 0 or boxes2.numel() == 0:
+        if is_aligned:
+            return boxes1.new_zeros((boxes1.shape[0],))
+        return boxes1.new_zeros((boxes1.shape[0], boxes2.shape[0]))
+
+    if is_aligned:
+        diff_iou = _mmcv_diff_iou_rotated_aligned(boxes1, boxes2)
+        if diff_iou is not None:
+            return diff_iou.clamp(min=0.0, max=1.0)
+
+    try:
+        return _mmcv_box_iou_rotated(boxes1, boxes2, is_aligned=is_aligned).clamp(min=0.0, max=1.0)
+    except Exception as exc:
+        raise ImportError(
+            "loss_riou 已启用，但当前环境没有可用的 mmcv 旋转 IoU 算子。"
+            "请安装与 PyTorch/CUDA 匹配的 mmcv，或临时把配置中的 loss_riou 改回 0.0。"
+        ) from exc
 
 
 # --- ADR 角度分布精细化算子 ---
