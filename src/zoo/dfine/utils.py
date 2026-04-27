@@ -30,7 +30,15 @@ def get_activation(act: str, inplace: bool = True):
 
 def sigmoid_focal_loss(inputs, targets, num_boxes, alpha: float = 0.25, gamma: float = 2.0):
     """
-    DETR 类模型常用的 Focal Loss 算子
+    DETR 类模型常用的 Focal Loss 算子。
+
+    支持输入形状：
+    - [N, C]
+    - [B, Q, C]
+
+    之前代码使用 loss.mean(1)，当输入为 [B, Q, C] 时会错误地在 query 维度 Q 上求均值，
+    导致分类损失被约 300 个 query 稀释，loss_vfl 异常偏小。正确做法是在类别维度 C 上
+    求均值，也就是 mean(-1)，然后对 batch 和 query 求和并按正样本数归一化。
     """
     prob = inputs.sigmoid()
     ce_loss = F.binary_cross_entropy_with_logits(inputs, targets, reduction="none")
@@ -41,7 +49,9 @@ def sigmoid_focal_loss(inputs, targets, num_boxes, alpha: float = 0.25, gamma: f
         alpha_t = alpha * targets + (1 - alpha) * (1 - targets)
         loss = alpha_t * loss
 
-    return loss.mean(1).sum() / num_boxes
+    if loss.ndim < 2:
+        return loss.sum() / num_boxes
+    return loss.mean(dim=-1).sum() / num_boxes
 
 # ==================== 3. 几何变换工具 ====================
 
