@@ -175,22 +175,55 @@ class ConvertBoxes(T.Transform):
     def __init__(self, fmt="", normalize=False) -> None:
         super().__init__()
         self.fmt, self.normalize = fmt, normalize
+
+    def _get_hw(self, boxes):
+        size = getattr(boxes, _boxes_keys[1])
+        # torchvision uses (height, width) for canvas_size/spatial_size.
+        h, w = int(size[0]), int(size[1])
+        return h, w
+
     def forward(self, *inputs: Any) -> Any:
         outputs = []
         for x in inputs:
             if isinstance(x, dict) and "boxes" in x:
                 target = x.copy()
                 boxes = target["boxes"]
-                sz = getattr(boxes, _boxes_keys[1])
+                h, w = self._get_hw(boxes)
+
                 if boxes.shape[-1] == 5:
-                    c, a = boxes[:, :4], boxes[:, 4:]
-                    if self.fmt: c = torchvision.ops.box_convert(c, boxes.format.value.lower(), self.fmt.lower())
-                    if self.normalize: c = c / torch.tensor(sz[::-1]).tile(2).to(c.device)[None]
-                    target["boxes"] = convert_to_tv_tensor(torch.cat([c, a], -1), "boxes", self.fmt.upper() or boxes.format.value, sz)
+                    coords = boxes[:, :4].clone()
+                    angle = boxes[:, 4:].clone()
+                    src_fmt = boxes.format.value.lower()
+                    dst_fmt = (self.fmt or src_fmt).lower()
+
+                    if src_fmt != dst_fmt:
+                        coords = torchvision.ops.box_convert(coords, src_fmt, dst_fmt)
+
+                    if self.normalize:
+                        if dst_fmt == "cxcywh":
+                            denom = torch.tensor([w, h, w, h], dtype=coords.dtype, device=coords.device)
+                        elif dst_fmt == "xyxy":
+                            denom = torch.tensor([w, h, w, h], dtype=coords.dtype, device=coords.device)
+                        else:
+                            raise ValueError(f"Unsupported OBB box format for normalization: {dst_fmt}")
+                        coords = coords / denom[None]
+
+                    target["boxes"] = convert_to_tv_tensor(
+                        torch.cat([coords, angle], -1),
+                        "boxes",
+                        box_format=dst_fmt,
+                        spatial_size=(h, w),
+                    )
                 else:
-                    if self.fmt: boxes = torchvision.ops.box_convert(boxes, boxes.format.value.lower(), self.fmt.lower())
-                    if self.normalize: boxes = boxes / torch.tensor(sz[::-1]).tile(2).to(boxes.device)[None]
-                    target["boxes"] = convert_to_tv_tensor(boxes, "boxes", self.fmt.upper(), sz)
+                    src_fmt = boxes.format.value.lower()
+                    dst_fmt = (self.fmt or src_fmt).lower()
+                    out_boxes = boxes.clone()
+                    if src_fmt != dst_fmt:
+                        out_boxes = torchvision.ops.box_convert(out_boxes, src_fmt, dst_fmt)
+                    if self.normalize:
+                        denom = torch.tensor([w, h, w, h], dtype=out_boxes.dtype, device=out_boxes.device)
+                        out_boxes = out_boxes / denom[None]
+                    target["boxes"] = convert_to_tv_tensor(out_boxes, "boxes", box_format=dst_fmt, spatial_size=(h, w))
                 outputs.append(target)
             else:
                 outputs.append(x)
