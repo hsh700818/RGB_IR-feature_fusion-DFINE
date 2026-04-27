@@ -50,13 +50,8 @@ class DetSolver(BaseSolver):
         args = self.cfg
         metric_names = ["AP50:95", "AP50", "AP75", "APsmall", "APmedium", "APlarge"]
 
-        # Default to less frequent validation. If eval_freq is missing from an
-        # older checkpoint/config object, do not fall back to every epoch.
         eval_freq = int(getattr(args, "eval_freq", 5))
         eval_freq = max(eval_freq, 1)
-
-        # Avoid running validation immediately after loading a resume checkpoint.
-        # This was the reason training started with Test: before the next epoch.
         skip_initial_eval = bool(getattr(args, "skip_initial_eval", True))
 
         primary_metric = getattr(args, "primary_metric", "obb_mAP50")
@@ -64,6 +59,14 @@ class DetSolver(BaseSolver):
         eval_obb = bool(getattr(args, "eval_obb", True))
         eval_obb_max_dets = int(getattr(args, "eval_obb_max_dets", 100))
         eval_obb_score_thr = float(getattr(args, "eval_obb_score_thr", 0.001))
+
+        # Early stopping. Patience is counted by validation rounds, not epochs.
+        # Example: eval_freq=5 and early_stop_patience=8 means stop after about
+        # 40 epochs without meaningful improvement.
+        early_stop_patience = int(getattr(args, "early_stop_patience", 0))
+        early_stop_min_delta = float(getattr(args, "early_stop_min_delta", 0.0))
+        early_stop_start_epoch = int(getattr(args, "early_stop_start_epoch", 0))
+        no_improve_evals = 0
 
         if self.use_wandb:
             import wandb
@@ -82,7 +85,9 @@ class DetSolver(BaseSolver):
             "Evaluation settings: "
             f"eval_freq={eval_freq}, eval_hbb={eval_hbb}, eval_obb={eval_obb}, "
             f"primary_metric={primary_metric}, skip_initial_eval={skip_initial_eval}, "
-            f"eval_obb_max_dets={eval_obb_max_dets}, eval_obb_score_thr={eval_obb_score_thr}"
+            f"eval_obb_max_dets={eval_obb_max_dets}, eval_obb_score_thr={eval_obb_score_thr}, "
+            f"early_stop_patience={early_stop_patience}, early_stop_min_delta={early_stop_min_delta}, "
+            f"early_stop_start_epoch={early_stop_start_epoch}"
         )
 
         top1 = 0.0
@@ -118,6 +123,7 @@ class DetSolver(BaseSolver):
         best_stat_print = best_stat.copy()
         start_time = time.time()
         start_epoch = self.last_epoch + 1
+        should_stop = False
 
         for epoch in range(start_epoch, args.epochs):
             self.train_dataloader.set_epoch(epoch)
@@ -188,15 +194,26 @@ class DetSolver(BaseSolver):
                     compare_key = "coco_eval_bbox" if "coco_eval_bbox" in test_stats else next(iter(test_stats), None)
 
                 current_primary = _metric_first_value(test_stats[compare_key]) if compare_key else 0.0
-                is_best = current_primary > top1
+                improvement = current_primary - top1
+                is_best = improvement > early_stop_min_delta
+
                 if is_best:
                     best_stat_print["epoch"] = epoch
                     top1 = current_primary
+                    no_improve_evals = 0
                     if self.output_dir:
                         if epoch >= self.train_dataloader.collate_fn.stop_epoch:
                             dist_utils.save_on_master(self.state_dict(), self.output_dir / "best_stg2.pth")
                         else:
                             dist_utils.save_on_master(self.state_dict(), self.output_dir / "best_stg1.pth")
+                else:
+                    if epoch + 1 >= early_stop_start_epoch:
+                        no_improve_evals += 1
+                    print(
+                        f"No meaningful improvement on {compare_key}: current={current_primary:.6f}, "
+                        f"best={top1:.6f}, delta={improvement:.6f}, "
+                        f"no_improve_evals={no_improve_evals}/{early_stop_patience}"
+                    )
 
                 for k, v in test_stats.items():
                     metric_value = _metric_first_value(v)
@@ -215,6 +232,17 @@ class DetSolver(BaseSolver):
                     best_stat_print[k] = best_stat[k]
 
                 print(f"best_stat: {best_stat_print}")
+
+                if (
+                    early_stop_patience > 0
+                    and epoch + 1 >= early_stop_start_epoch
+                    and no_improve_evals >= early_stop_patience
+                ):
+                    print(
+                        f"Early stopping triggered at epoch {epoch}. "
+                        f"Best {primary_metric}={top1:.6f} at epoch {best_stat_print.get('epoch', -1)}."
+                    )
+                    should_stop = True
 
                 if epoch >= self.train_dataloader.collate_fn.stop_epoch and not is_best:
                     if self.ema:
@@ -260,6 +288,9 @@ class DetSolver(BaseSolver):
                                 coco_evaluator.coco_eval["bbox"].eval,
                                 self.output_dir / "eval" / name,
                             )
+
+            if should_stop:
+                break
 
         total_time = time.time() - start_time
         total_time_str = str(datetime.timedelta(seconds=int(total_time)))
