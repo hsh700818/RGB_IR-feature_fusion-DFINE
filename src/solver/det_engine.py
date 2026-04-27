@@ -48,9 +48,7 @@ def train_one_epoch(
     output_dir = kwargs.get("output_dir", None)
     num_visualization_sample_batch = kwargs.get("num_visualization_sample_batch", 1)
 
-    for i, (samples, targets) in enumerate(
-        metric_logger.log_every(data_loader, print_freq, header)
-    ):
+    for i, (samples, targets) in enumerate(metric_logger.log_every(data_loader, print_freq, header)):
         global_step = epoch * len(data_loader) + i
         metas = dict(epoch=epoch, step=i, global_step=global_step, epoch_step=len(data_loader))
 
@@ -127,24 +125,15 @@ def train_one_epoch(
                 writer.add_scalar(f"Loss/{k}", v.item(), global_step)
 
     if use_wandb:
-        wandb.log(
-            {"lr": optimizer.param_groups[0]["lr"], "epoch": epoch, "train/loss": np.mean(losses)}
-        )
+        wandb.log({"lr": optimizer.param_groups[0]["lr"], "epoch": epoch, "train/loss": np.mean(losses)})
     metric_logger.synchronize_between_processes()
     print("Averaged stats:", metric_logger)
     return {k: meter.global_avg for k, meter in metric_logger.meters.items()}
 
 
 def _compute_coco_ap50_per_class(coco_eval, category2name=None):
-    """Return overall mAP@0.5 and per-class AP@0.5 from a COCO-style evaluator.
-
-    COCO precision shape is [T, R, K, A, M]: IoU thresholds, recall thresholds,
-    categories, area ranges, and max detections.  AP@0.5 uses IoU=0.50, area=all,
-    and maxDets=100 when available.
-    """
     if coco_eval is None or not hasattr(coco_eval, "eval") or coco_eval.eval is None:
         return {}, None
-
     precision = coco_eval.eval.get("precision", None)
     if precision is None:
         return {}, None
@@ -174,10 +163,10 @@ def _compute_coco_ap50_per_class(coco_eval, category2name=None):
     return per_class_ap50, map50
 
 
-def _print_ap50_table(per_class_ap50, map50):
+def _print_ap50_table(per_class_ap50, map50, title="DroneVehicle AP@0.5 per class"):
     if not per_class_ap50:
         return
-    print("\nDroneVehicle AP@0.5 per class:")
+    print(f"\n{title}:")
     print("+-------------+--------+")
     print("| class       | AP@0.5 |")
     print("+-------------+--------+")
@@ -188,6 +177,153 @@ def _print_ap50_table(per_class_ap50, map50):
     print("+-------------+--------+")
     print(f"| {'mAP@0.5':<11} | {map_str:>6} |")
     print("+-------------+--------+\n")
+
+
+def _rbox_to_poly_np(rbox):
+    cx, cy, w, h, angle = [float(x) for x in rbox]
+    w = max(w, 0.0)
+    h = max(h, 0.0)
+    ca, sa = math.cos(angle), math.sin(angle)
+    dx = np.array([-w / 2, w / 2, w / 2, -w / 2], dtype=np.float64)
+    dy = np.array([-h / 2, -h / 2, h / 2, h / 2], dtype=np.float64)
+    x = cx + dx * ca - dy * sa
+    y = cy + dx * sa + dy * ca
+    return np.stack([x, y], axis=1)
+
+
+def _poly_area_np(poly):
+    if poly is None or len(poly) < 3:
+        return 0.0
+    x = poly[:, 0]
+    y = poly[:, 1]
+    return float(abs(0.5 * (np.dot(x, np.roll(y, -1)) - np.dot(y, np.roll(x, -1)))))
+
+
+def _line_intersection_np(p1, p2, q1, q2):
+    r = p2 - p1
+    s = q2 - q1
+    denom = r[0] * s[1] - r[1] * s[0]
+    if abs(denom) < 1e-9:
+        return p2
+    t = ((q1 - p1)[0] * s[1] - (q1 - p1)[1] * s[0]) / denom
+    return p1 + t * r
+
+
+def _inside_edge_np(p, a, b):
+    return ((b[0] - a[0]) * (p[1] - a[1]) - (b[1] - a[1]) * (p[0] - a[0])) >= -1e-9
+
+
+def _ensure_ccw_np(poly):
+    signed = 0.5 * (np.dot(poly[:, 0], np.roll(poly[:, 1], -1)) - np.dot(poly[:, 1], np.roll(poly[:, 0], -1)))
+    return poly if signed >= 0 else poly[::-1].copy()
+
+
+def _convex_clip_np(subject, clip):
+    output = _ensure_ccw_np(subject)
+    clip = _ensure_ccw_np(clip)
+    for i in range(len(clip)):
+        a = clip[i]
+        b = clip[(i + 1) % len(clip)]
+        input_list = output
+        if len(input_list) == 0:
+            break
+        output_pts = []
+        s = input_list[-1]
+        for e in input_list:
+            if _inside_edge_np(e, a, b):
+                if not _inside_edge_np(s, a, b):
+                    output_pts.append(_line_intersection_np(s, e, a, b))
+                output_pts.append(e)
+            elif _inside_edge_np(s, a, b):
+                output_pts.append(_line_intersection_np(s, e, a, b))
+            s = e
+        output = np.asarray(output_pts, dtype=np.float64)
+    return output
+
+
+def _rotated_iou_np(box1, box2):
+    poly1 = _rbox_to_poly_np(box1)
+    poly2 = _rbox_to_poly_np(box2)
+    area1 = _poly_area_np(poly1)
+    area2 = _poly_area_np(poly2)
+    if area1 <= 0 or area2 <= 0:
+        return 0.0
+    inter_poly = _convex_clip_np(poly1, poly2)
+    inter = _poly_area_np(inter_poly)
+    union = area1 + area2 - inter
+    return 0.0 if union <= 0 else float(inter / union)
+
+
+def _voc_ap(rec, prec):
+    mrec = np.concatenate(([0.0], rec, [1.0]))
+    mpre = np.concatenate(([0.0], prec, [0.0]))
+    for i in range(mpre.size - 1, 0, -1):
+        mpre[i - 1] = max(mpre[i - 1], mpre[i])
+    i = np.where(mrec[1:] != mrec[:-1])[0]
+    return float(np.sum((mrec[i + 1] - mrec[i]) * mpre[i + 1]))
+
+
+def _compute_obb_ap50(gt, preds, category2name=None, iou_thr=0.5):
+    category2name = category2name or {}
+    all_classes = sorted(set([int(x) for g in gt for x in g["labels"]]) | set([int(x) for p in preds for x in p["labels"]]))
+    per_class_ap = {}
+    valid_aps = []
+
+    for cls in all_classes:
+        gt_by_image = {}
+        npos = 0
+        for img_id, g in enumerate(gt):
+            labels = g["labels"]
+            boxes = g["rboxes"]
+            inds = np.where(labels == cls)[0]
+            gt_by_image[img_id] = {"boxes": boxes[inds], "detected": np.zeros(len(inds), dtype=bool)}
+            npos += len(inds)
+
+        cls_preds = []
+        for img_id, p in enumerate(preds):
+            labels = p["labels"]
+            inds = np.where(labels == cls)[0]
+            for ind in inds:
+                cls_preds.append((float(p["scores"][ind]), img_id, p["rboxes"][ind]))
+        cls_preds.sort(key=lambda x: x[0], reverse=True)
+
+        tp = np.zeros(len(cls_preds), dtype=np.float64)
+        fp = np.zeros(len(cls_preds), dtype=np.float64)
+        for i, (_, img_id, pred_box) in enumerate(cls_preds):
+            gt_info = gt_by_image.get(img_id, {"boxes": np.zeros((0, 5)), "detected": np.zeros(0, dtype=bool)})
+            gt_boxes = gt_info["boxes"]
+            if len(gt_boxes) == 0:
+                fp[i] = 1.0
+                continue
+            ious = np.array([_rotated_iou_np(pred_box, gt_box) for gt_box in gt_boxes], dtype=np.float64)
+            j = int(np.argmax(ious))
+            if ious[j] >= iou_thr and not gt_info["detected"][j]:
+                tp[i] = 1.0
+                gt_info["detected"][j] = True
+            else:
+                fp[i] = 1.0
+
+        if npos == 0:
+            ap = float("nan")
+        else:
+            fp_cum = np.cumsum(fp)
+            tp_cum = np.cumsum(tp)
+            rec = tp_cum / max(float(npos), np.finfo(np.float64).eps)
+            prec = tp_cum / np.maximum(tp_cum + fp_cum, np.finfo(np.float64).eps)
+            ap = _voc_ap(rec, prec)
+            valid_aps.append(ap)
+
+        name = category2name.get(cls + 1, str(cls)) if cls < len(category2name) else category2name.get(cls, str(cls))
+        per_class_ap[name] = ap
+
+    map50 = float(np.mean(valid_aps)) if valid_aps else float("nan")
+    return per_class_ap, map50
+
+
+def _scale_target_rboxes(target_boxes, orig_size):
+    boxes = target_boxes.detach().cpu().numpy().astype(np.float64)
+    scale = np.array([float(orig_size[0]), float(orig_size[1]), float(orig_size[0]), float(orig_size[1]), 1.0], dtype=np.float64)
+    return boxes * scale[None]
 
 
 @torch.no_grad()
@@ -211,24 +347,22 @@ def evaluate(
 
     metric_logger = MetricLogger(delimiter="  ")
     header = "Test:"
-
     iou_types = coco_evaluator.iou_types
 
     gt: List[Dict[str, torch.Tensor]] = []
     preds: List[Dict[str, torch.Tensor]] = []
+    obb_gt = []
+    obb_preds = []
 
     output_dir = kwargs.get("output_dir", None)
     num_visualization_sample_batch = kwargs.get("num_visualization_sample_batch", 1)
 
     for i, (samples, targets) in enumerate(metric_logger.log_every(data_loader, 10, header)):
-        global_step = epoch * len(data_loader) + i
-
         if i < num_visualization_sample_batch and output_dir is not None and dist_utils.is_main_process():
             save_samples(samples, targets, output_dir, "val", normalized=False, box_fmt="xyxy")
 
         samples = samples.to(device)
         targets = [{k: v.to(device) if isinstance(v, torch.Tensor) else v for k, v in t.items()} for t in targets]
-
         outputs = model(samples)
 
         orig_target_sizes = torch.stack([t["orig_size"] for t in targets], dim=0)
@@ -239,24 +373,34 @@ def evaluate(
             coco_evaluator.update(res)
 
         for idx, (target, result) in enumerate(zip(targets, results)):
-            gt.append(
-                {
-                    "boxes": scale_boxes(
-                        target["boxes"],
-                        (target["orig_size"][1], target["orig_size"][0]),
-                        (samples[idx].shape[-1], samples[idx].shape[-2]),
-                    ),
-                    "labels": target["labels"],
-                }
-            )
+            gt.append({
+                "boxes": scale_boxes(target["boxes"], (target["orig_size"][1], target["orig_size"][0]), (samples[idx].shape[-1], samples[idx].shape[-2])),
+                "labels": target["labels"],
+            })
             labels = (
                 torch.tensor([mscoco_category2label[int(x.item())] for x in result["labels"].flatten()])
                 .to(result["labels"].device)
                 .reshape(result["labels"].shape)
             ) if postprocessor.remap_mscoco_category else result["labels"]
-            preds.append(
-                {"boxes": result["boxes"], "labels": labels, "scores": result["scores"]}
-            )
+            preds.append({"boxes": result["boxes"], "labels": labels, "scores": result["scores"]})
+
+            obb_gt.append({
+                "rboxes": _scale_target_rboxes(target["boxes"], target["orig_size"].detach().cpu().numpy()),
+                "labels": target["labels"].detach().cpu().numpy().astype(np.int64),
+            })
+            pred_rboxes = result.get("rboxes", None)
+            if pred_rboxes is not None:
+                obb_preds.append({
+                    "rboxes": pred_rboxes.detach().cpu().numpy().astype(np.float64),
+                    "labels": labels.detach().cpu().numpy().astype(np.int64),
+                    "scores": result["scores"].detach().cpu().numpy().astype(np.float64),
+                })
+            else:
+                obb_preds.append({
+                    "rboxes": np.zeros((0, 5), dtype=np.float64),
+                    "labels": np.zeros((0,), dtype=np.int64),
+                    "scores": np.zeros((0,), dtype=np.float64),
+                })
 
     metrics = Validator(gt, preds).compute_metrics()
     print("Metrics:", metrics)
@@ -280,11 +424,17 @@ def evaluate(
             bbox_eval = coco_evaluator.coco_eval["bbox"]
             stats["coco_eval_bbox"] = bbox_eval.stats.tolist()
             per_class_ap50, map50 = _compute_coco_ap50_per_class(bbox_eval, mscoco_category2name)
-            _print_ap50_table(per_class_ap50, map50)
+            _print_ap50_table(per_class_ap50, map50, title="DroneVehicle HBB AP@0.5 per class")
             stats["mAP50"] = map50
             for name, ap in per_class_ap50.items():
                 stats[f"AP50_{name}"] = ap
         if "segm" in iou_types:
             stats["coco_eval_masks"] = coco_evaluator.coco_eval["segm"].stats.tolist()
+
+    obb_per_class, obb_map50 = _compute_obb_ap50(obb_gt, obb_preds, mscoco_category2name, iou_thr=0.5)
+    _print_ap50_table(obb_per_class, obb_map50, title="DroneVehicle OBB AP@0.5 per class")
+    stats["obb_mAP50"] = obb_map50
+    for name, ap in obb_per_class.items():
+        stats[f"obb_AP50_{name}"] = ap
 
     return stats, coco_evaluator
