@@ -18,11 +18,7 @@ from .det_engine import evaluate, train_one_epoch
 
 
 def _metric_first_value(value):
-    """Return a scalar value for best-checkpoint comparison.
-
-    COCO metrics are lists, for example coco_eval_bbox[0]. Custom metrics such
-    as mAP50 and obb_mAP50 are floats. The solver must support both forms.
-    """
+    """Return a scalar value for best-checkpoint comparison."""
     if isinstance(value, torch.Tensor):
         if value.numel() == 1:
             return float(value.item())
@@ -53,14 +49,21 @@ class DetSolver(BaseSolver):
         self.train()
         args = self.cfg
         metric_names = ["AP50:95", "AP50", "AP75", "APsmall", "APmedium", "APlarge"]
-        eval_freq = int(getattr(args, "eval_freq", 1))
+
+        # Default to less frequent validation. If eval_freq is missing from an
+        # older checkpoint/config object, do not fall back to every epoch.
+        eval_freq = int(getattr(args, "eval_freq", 5))
         eval_freq = max(eval_freq, 1)
 
-        # For DroneVehicle OBB experiments, OBB AP@0.5 is the primary metric.
-        # HBB COCO evaluation can be enabled from config with eval_hbb: True.
+        # Avoid running validation immediately after loading a resume checkpoint.
+        # This was the reason training started with Test: before the next epoch.
+        skip_initial_eval = bool(getattr(args, "skip_initial_eval", True))
+
         primary_metric = getattr(args, "primary_metric", "obb_mAP50")
         eval_hbb = bool(getattr(args, "eval_hbb", False))
         eval_obb = bool(getattr(args, "eval_obb", True))
+        eval_obb_max_dets = int(getattr(args, "eval_obb_max_dets", 100))
+        eval_obb_score_thr = float(getattr(args, "eval_obb_score_thr", 0.001))
 
         if self.use_wandb:
             import wandb
@@ -75,12 +78,17 @@ class DetSolver(BaseSolver):
         n_parameters, model_stats = stats(self.cfg)
         print(model_stats)
         print("-" * 42 + "Start training" + "-" * 43)
-        print(f"Evaluation settings: eval_freq={eval_freq}, eval_hbb={eval_hbb}, eval_obb={eval_obb}, primary_metric={primary_metric}")
+        print(
+            "Evaluation settings: "
+            f"eval_freq={eval_freq}, eval_hbb={eval_hbb}, eval_obb={eval_obb}, "
+            f"primary_metric={primary_metric}, skip_initial_eval={skip_initial_eval}, "
+            f"eval_obb_max_dets={eval_obb_max_dets}, eval_obb_score_thr={eval_obb_score_thr}"
+        )
 
         top1 = 0.0
         best_stat = {"epoch": -1}
 
-        if self.last_epoch > 0:
+        if self.last_epoch > 0 and not skip_initial_eval:
             module = self.ema.module if self.ema else self.model
             test_stats, coco_evaluator = evaluate(
                 module,
@@ -94,6 +102,8 @@ class DetSolver(BaseSolver):
                 output_dir=self.output_dir,
                 eval_hbb=eval_hbb,
                 eval_obb=eval_obb,
+                eval_obb_max_dets=eval_obb_max_dets,
+                eval_obb_score_thr=eval_obb_score_thr,
             )
             for k, v in test_stats.items():
                 metric_value = _metric_first_value(v)
@@ -102,6 +112,8 @@ class DetSolver(BaseSolver):
                 if k == primary_metric or primary_metric not in test_stats:
                     top1 = metric_value
                 print(f"best_stat: {best_stat}")
+        elif self.last_epoch > 0 and skip_initial_eval:
+            print(f"Skip initial evaluation after resume at last_epoch={self.last_epoch}.")
 
         best_stat_print = best_stat.copy()
         start_time = time.time()
@@ -167,6 +179,8 @@ class DetSolver(BaseSolver):
                     output_dir=self.output_dir,
                     eval_hbb=eval_hbb,
                     eval_obb=eval_obb,
+                    eval_obb_max_dets=eval_obb_max_dets,
+                    eval_obb_score_thr=eval_obb_score_thr,
                 )
 
                 compare_key = primary_metric if primary_metric in test_stats else None
@@ -256,6 +270,8 @@ class DetSolver(BaseSolver):
         args = self.cfg
         eval_hbb = bool(getattr(args, "eval_hbb", False))
         eval_obb = bool(getattr(args, "eval_obb", True))
+        eval_obb_max_dets = int(getattr(args, "eval_obb_max_dets", 100))
+        eval_obb_score_thr = float(getattr(args, "eval_obb_score_thr", 0.001))
 
         module = self.ema.module if self.ema else self.model
         test_stats, coco_evaluator = evaluate(
@@ -270,6 +286,8 @@ class DetSolver(BaseSolver):
             output_dir=self.output_dir,
             eval_hbb=eval_hbb,
             eval_obb=eval_obb,
+            eval_obb_max_dets=eval_obb_max_dets,
+            eval_obb_score_thr=eval_obb_score_thr,
         )
 
         if self.output_dir and coco_evaluator is not None and eval_hbb:
