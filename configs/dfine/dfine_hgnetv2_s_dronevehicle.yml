@@ -12,6 +12,12 @@ use_amp: True
 seed: 42
 # 每 5 轮验证一次，避免每轮训练后都长时间卡在验证阶段。
 eval_freq: 5
+skip_initial_eval: True
+eval_hbb: False
+eval_obb: True
+primary_metric: obb_mAP50
+eval_obb_max_dets: 100
+eval_obb_score_thr: 0.001
 
 num_classes: 5
 remap_mscoco_category: True
@@ -60,7 +66,8 @@ DFINECriterion:
   weight_dict:
     loss_vfl: 2.0
     loss_bbox: 5.0
-    loss_riou: 0.0
+    # 已启用 mmcv 真 rotated IoU。先用 0.5 小权重观察稳定性，稳定后再尝试 1.0。
+    loss_riou: 0.5
     loss_fgl: 0.0
   losses: ['labels', 'rboxes']
   num_bins: 16
