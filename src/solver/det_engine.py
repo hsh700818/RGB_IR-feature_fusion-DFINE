@@ -343,11 +343,16 @@ def evaluate(
 
     model.eval()
     criterion.eval()
-    coco_evaluator.cleanup()
+
+    eval_hbb = bool(kwargs.get("eval_hbb", True))
+    eval_obb = bool(kwargs.get("eval_obb", True))
+
+    if coco_evaluator is not None and eval_hbb:
+        coco_evaluator.cleanup()
 
     metric_logger = MetricLogger(delimiter="  ")
     header = "Test:"
-    iou_types = coco_evaluator.iou_types
+    iou_types = coco_evaluator.iou_types if coco_evaluator is not None else []
 
     gt: List[Dict[str, torch.Tensor]] = []
     preds: List[Dict[str, torch.Tensor]] = []
@@ -368,58 +373,65 @@ def evaluate(
         orig_target_sizes = torch.stack([t["orig_size"] for t in targets], dim=0)
         results = postprocessor(outputs, orig_target_sizes)
 
-        res = {target["image_id"].item(): output for target, output in zip(targets, results)}
-        if coco_evaluator is not None:
+        if eval_hbb and coco_evaluator is not None:
+            res = {target["image_id"].item(): output for target, output in zip(targets, results)}
             coco_evaluator.update(res)
 
         for idx, (target, result) in enumerate(zip(targets, results)):
-            gt.append({
-                "boxes": scale_boxes(target["boxes"], (target["orig_size"][1], target["orig_size"][0]), (samples[idx].shape[-1], samples[idx].shape[-2])),
-                "labels": target["labels"],
-            })
             labels = (
                 torch.tensor([mscoco_category2label[int(x.item())] for x in result["labels"].flatten()])
                 .to(result["labels"].device)
                 .reshape(result["labels"].shape)
             ) if postprocessor.remap_mscoco_category else result["labels"]
-            preds.append({"boxes": result["boxes"], "labels": labels, "scores": result["scores"]})
 
-            obb_gt.append({
-                "rboxes": _scale_target_rboxes(target["boxes"], target["orig_size"].detach().cpu().numpy()),
-                "labels": target["labels"].detach().cpu().numpy().astype(np.int64),
-            })
-            pred_rboxes = result.get("rboxes", None)
-            if pred_rboxes is not None:
-                obb_preds.append({
-                    "rboxes": pred_rboxes.detach().cpu().numpy().astype(np.float64),
-                    "labels": labels.detach().cpu().numpy().astype(np.int64),
-                    "scores": result["scores"].detach().cpu().numpy().astype(np.float64),
+            if eval_hbb:
+                gt.append({
+                    "boxes": scale_boxes(
+                        target["boxes"],
+                        (target["orig_size"][1], target["orig_size"][0]),
+                        (samples[idx].shape[-1], samples[idx].shape[-2]),
+                    ),
+                    "labels": target["labels"],
                 })
-            else:
-                obb_preds.append({
-                    "rboxes": np.zeros((0, 5), dtype=np.float64),
-                    "labels": np.zeros((0,), dtype=np.int64),
-                    "scores": np.zeros((0,), dtype=np.float64),
-                })
+                preds.append({"boxes": result["boxes"], "labels": labels, "scores": result["scores"]})
 
-    metrics = Validator(gt, preds).compute_metrics()
-    print("Metrics:", metrics)
-    if use_wandb:
-        metrics = {f"metrics/{k}": v for k, v in metrics.items()}
-        metrics["epoch"] = epoch
-        wandb.log(metrics)
+            if eval_obb:
+                obb_gt.append({
+                    "rboxes": _scale_target_rboxes(target["boxes"], target["orig_size"].detach().cpu().numpy()),
+                    "labels": target["labels"].detach().cpu().numpy().astype(np.int64),
+                })
+                pred_rboxes = result.get("rboxes", None)
+                if pred_rboxes is not None:
+                    obb_preds.append({
+                        "rboxes": pred_rboxes.detach().cpu().numpy().astype(np.float64),
+                        "labels": labels.detach().cpu().numpy().astype(np.int64),
+                        "scores": result["scores"].detach().cpu().numpy().astype(np.float64),
+                    })
+                else:
+                    obb_preds.append({
+                        "rboxes": np.zeros((0, 5), dtype=np.float64),
+                        "labels": np.zeros((0,), dtype=np.int64),
+                        "scores": np.zeros((0,), dtype=np.float64),
+                    })
+
+    stats = {}
+
+    if eval_hbb:
+        metrics = Validator(gt, preds).compute_metrics()
+        print("Metrics:", metrics)
+        if use_wandb:
+            metrics = {f"metrics/{k}": v for k, v in metrics.items()}
+            metrics["epoch"] = epoch
+            wandb.log(metrics)
 
     metric_logger.synchronize_between_processes()
     print("Averaged stats:", metric_logger)
-    if coco_evaluator is not None:
-        coco_evaluator.synchronize_between_processes()
 
-    if coco_evaluator is not None:
+    if eval_hbb and coco_evaluator is not None:
+        coco_evaluator.synchronize_between_processes()
         coco_evaluator.accumulate()
         coco_evaluator.summarize()
 
-    stats = {}
-    if coco_evaluator is not None:
         if "bbox" in iou_types:
             bbox_eval = coco_evaluator.coco_eval["bbox"]
             stats["coco_eval_bbox"] = bbox_eval.stats.tolist()
@@ -431,10 +443,11 @@ def evaluate(
         if "segm" in iou_types:
             stats["coco_eval_masks"] = coco_evaluator.coco_eval["segm"].stats.tolist()
 
-    obb_per_class, obb_map50 = _compute_obb_ap50(obb_gt, obb_preds, mscoco_category2name, iou_thr=0.5)
-    _print_ap50_table(obb_per_class, obb_map50, title="DroneVehicle OBB AP@0.5 per class")
-    stats["obb_mAP50"] = obb_map50
-    for name, ap in obb_per_class.items():
-        stats[f"obb_AP50_{name}"] = ap
+    if eval_obb:
+        obb_per_class, obb_map50 = _compute_obb_ap50(obb_gt, obb_preds, mscoco_category2name, iou_thr=0.5)
+        _print_ap50_table(obb_per_class, obb_map50, title="DroneVehicle OBB AP@0.5 per class")
+        stats["obb_mAP50"] = obb_map50
+        for name, ap in obb_per_class.items():
+            stats[f"obb_AP50_{name}"] = ap
 
     return stats, coco_evaluator
