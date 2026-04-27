@@ -14,7 +14,7 @@ seed: 42
 
 # 1. 任务定义
 num_classes: 5
-remap_mscoco_category: False
+remap_mscoco_category: True
 output_dir: ./output/dfine_s_dronevehicle_obb_fusion
 
 # 2. 架构缩放 (S 版本: 3个尺度, 通道 256)

@@ -30,6 +30,7 @@ class HungarianMatcher(nn.Module):
     @torch.no_grad()
     def forward(self, outputs, targets):
         bs, num_queries = outputs["pred_logits"].shape[:2]
+        num_classes = outputs["pred_logits"].shape[-1]
         out_prob = outputs["pred_logits"].flatten(0, 1).sigmoid() 
         out_bbox = outputs["pred_boxes"].flatten(0, 1) 
 
@@ -42,14 +43,20 @@ class HungarianMatcher(nn.Module):
                 indices.append((torch.as_tensor([], dtype=torch.int64), torch.as_tensor([], dtype=torch.int64)))
                 continue
 
-            # 分类代价
+            # 防止类别 ID 越界导致 CUDA 报错
+            # 如果 tgt_ids 包含 >= num_classes 的值，计算 cost_class 时会崩溃
+            tgt_ids_safe = torch.clamp(tgt_ids, 0, num_classes - 1)
+
+            # 分类代价 (Classification Cost)
             neg_cost_class = (1 - self.alpha) * (out_prob[i*num_queries:(i+1)*num_queries] ** self.gamma) * \
                              (-(1 - out_prob[i*num_queries:(i+1)*num_queries] + 1e-8).log())
             pos_cost_class = self.alpha * ((1 - out_prob[i*num_queries:(i+1)*num_queries]) ** self.gamma) * \
                              (-(out_prob[i*num_queries:(i+1)*num_queries] + 1e-8).log())
-            cost_class = pos_cost_class[:, tgt_ids] - neg_cost_class[:, tgt_ids]
+            
+            # 使用安全标签索引
+            cost_class = pos_cost_class[:, tgt_ids_safe] - neg_cost_class[:, tgt_ids_safe]
 
-            # 顶点几何代价
+            # 顶点几何代价 (L1 Distance)
             out_corners = rbox_to_corners(out_bbox[i*num_queries:(i+1)*num_queries]) 
             tgt_corners = rbox_to_corners(tgt_bbox) 
             dist_matrix = torch.cdist(out_corners.flatten(1), tgt_corners.flatten(1), p=1) 
@@ -57,9 +64,12 @@ class HungarianMatcher(nn.Module):
 
             # 旋转 IoU 代价
             iou_matrix = rotated_iou(out_bbox[i*num_queries:(i+1)*num_queries], tgt_bbox)
-            cost_giou = -iou_matrix 
+            cost_giou = -iou_matrix
 
+            # 组合总代价
             C = self.cost_bbox * cost_bbox + self.cost_class * cost_class + self.cost_giou * cost_giou
+            
+            # 匈牙利算法求解
             indices.append(linear_sum_assignment(C.cpu()))
 
         return [(torch.as_tensor(i, dtype=torch.int64), torch.as_tensor(j, dtype=torch.int64)) for i, j in indices]
