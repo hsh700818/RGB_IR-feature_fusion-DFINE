@@ -35,19 +35,39 @@ class DFINEPostProcessor(nn.Module):
     def extra_repr(self) -> str:
         return f"use_focal_loss={self.use_focal_loss}, num_classes={self.num_classes}, num_top_queries={self.num_top_queries}"
 
-    # def forward(self, outputs, orig_target_sizes):
+    def _obb_to_hbb_xyxy(self, boxes: torch.Tensor) -> torch.Tensor:
+        """Convert 5D normalized OBB boxes to normalized HBB xyxy boxes.
+
+        Current COCO/FasterCocoEvaluator pipeline evaluates horizontal bbox AP.
+        The decoder now predicts [cx, cy, w, h, angle].  torchvision.box_convert
+        only accepts four coordinates, so we convert the rotated boxes to their
+        enclosing horizontal boxes for evaluation and visualization.
+        """
+        from .box_ops import rbox_to_corners
+
+        corners = rbox_to_corners(boxes)  # [B, Q, 4, 2]
+        xmin = corners[..., 0].min(dim=-1).values
+        ymin = corners[..., 1].min(dim=-1).values
+        xmax = corners[..., 0].max(dim=-1).values
+        ymax = corners[..., 1].max(dim=-1).values
+        return torch.stack([xmin, ymin, xmax, ymax], dim=-1).clamp(0, 1)
+
+    def _boxes_to_xyxy(self, boxes: torch.Tensor) -> torch.Tensor:
+        if boxes.shape[-1] == 5:
+            return self._obb_to_hbb_xyxy(boxes)
+        if boxes.shape[-1] == 4:
+            return torchvision.ops.box_convert(boxes, in_fmt="cxcywh", out_fmt="xyxy").clamp(0, 1)
+        raise ValueError(f"Unsupported pred_boxes shape {boxes.shape}; expected last dim 4 or 5")
+
     def forward(self, outputs, orig_target_sizes: torch.Tensor):
         logits, boxes = outputs["pred_logits"], outputs["pred_boxes"]
-        # orig_target_sizes = torch.stack([t["orig_size"] for t in targets], dim=0)
 
-        bbox_pred = torchvision.ops.box_convert(boxes, in_fmt="cxcywh", out_fmt="xyxy")
-        bbox_pred *= orig_target_sizes.repeat(1, 2).unsqueeze(1)
+        bbox_pred = self._boxes_to_xyxy(boxes)
+        bbox_pred = bbox_pred * orig_target_sizes.repeat(1, 2).unsqueeze(1)
 
         if self.use_focal_loss:
             scores = F.sigmoid(logits)
             scores, index = torch.topk(scores.flatten(1), self.num_top_queries, dim=-1)
-            # TODO for older tensorrt
-            # labels = index % self.num_classes
             labels = mod(index, self.num_classes)
             index = index // self.num_classes
             boxes = bbox_pred.gather(
@@ -57,6 +77,7 @@ class DFINEPostProcessor(nn.Module):
         else:
             scores = F.softmax(logits)[:, :, :-1]
             scores, labels = scores.max(dim=-1)
+            boxes = bbox_pred
             if scores.shape[1] > self.num_top_queries:
                 scores, index = torch.topk(scores, self.num_top_queries, dim=-1)
                 labels = torch.gather(labels, dim=1, index=index)
@@ -64,11 +85,9 @@ class DFINEPostProcessor(nn.Module):
                     boxes, dim=1, index=index.unsqueeze(-1).tile(1, 1, boxes.shape[-1])
                 )
 
-        # TODO for onnx export
         if self.deploy_mode:
             return labels, boxes, scores
 
-        # TODO
         if self.remap_mscoco_category:
             from ...data.dataset import mscoco_label2category
 
@@ -85,9 +104,7 @@ class DFINEPostProcessor(nn.Module):
 
         return results
 
-    def deploy(
-        self,
-    ):
+    def deploy(self):
         self.eval()
         self.deploy_mode = True
         return self
