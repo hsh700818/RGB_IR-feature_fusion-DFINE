@@ -10,6 +10,33 @@ from loguru import logger
 from torchvision.ops import box_iou
 
 
+def _rbox_to_hbb_xyxy(boxes: torch.Tensor) -> torch.Tensor:
+    """Convert 5D rotated boxes [cx, cy, w, h, angle] to enclosing HBB xyxy."""
+    if boxes.numel() == 0:
+        return boxes.new_zeros((0, 4))
+    cx, cy, w, h, angle = boxes.unbind(-1)
+    ca = torch.cos(angle).abs()
+    sa = torch.sin(angle).abs()
+    hbb_w = ca * w + sa * h
+    hbb_h = sa * w + ca * h
+    x1 = cx - hbb_w / 2
+    y1 = cy - hbb_h / 2
+    x2 = cx + hbb_w / 2
+    y2 = cy + hbb_h / 2
+    return torch.stack([x1, y1, x2, y2], dim=-1)
+
+
+def _ensure_xyxy_boxes(boxes: torch.Tensor) -> torch.Tensor:
+    """Validator uses torchvision.box_iou, which only accepts 4D xyxy boxes."""
+    if boxes.ndim == 2 and boxes.shape[-1] == 5:
+        return _rbox_to_hbb_xyxy(boxes)
+    if boxes.ndim == 2 and boxes.shape[-1] == 4:
+        return boxes
+    if boxes.numel() == 0:
+        return boxes.reshape(0, 4)
+    raise ValueError(f"Validator expects boxes with last dim 4 or 5, got {tuple(boxes.shape)}")
+
+
 class Validator:
     def __init__(
         self,
@@ -21,8 +48,9 @@ class Validator:
         """
         Format example:
         gt = [{'labels': tensor([0]), 'boxes': tensor([[561.0, 297.0, 661.0, 359.0]])}, ...]
-        len(gt) is the number of images
-        bboxes are in format [x1, y1, x2, y2], absolute values
+        len(gt) is the number of images.
+        Boxes can be either HBB xyxy [x1, y1, x2, y2] or OBB [cx, cy, w, h, angle].
+        OBB boxes are converted to enclosing HBB before computing auxiliary Validator metrics.
         """
         self.gt = gt
         self.preds = preds
@@ -84,15 +112,14 @@ class Validator:
     def _compute_matrix_multi_class(self, preds):
         metrics_per_class = defaultdict(lambda: {"TPs": 0, "FPs": 0, "FNs": 0, "IoUs": []})
         for pred, gt in zip(preds, self.gt):
-            pred_boxes = pred["boxes"]
+            pred_boxes = _ensure_xyxy_boxes(pred["boxes"])
             pred_labels = pred["labels"]
-            gt_boxes = gt["boxes"]
+            gt_boxes = _ensure_xyxy_boxes(gt["boxes"])
             gt_labels = gt["labels"]
 
-            # isolate each class
             labels = torch.unique(torch.cat([pred_labels, gt_labels]))
             for label in labels:
-                pred_cl_boxes = pred_boxes[pred_labels == label]  # filter by bool mask
+                pred_cl_boxes = pred_boxes[pred_labels == label]
                 gt_cl_boxes = gt_boxes[gt_labels == label]
 
                 n_preds = len(pred_cl_boxes)
@@ -108,13 +135,11 @@ class Validator:
                     metrics_per_class[label.item()]["IoUs"].extend([0] * n_preds)
                     continue
 
-                ious = box_iou(pred_cl_boxes, gt_cl_boxes)  # matrix of all IoUs
+                ious = box_iou(pred_cl_boxes, gt_cl_boxes)
                 ious_mask = ious >= self.iou_thresh
-
-                # indeces of boxes that have IoU >= threshold
                 pred_indices, gt_indices = torch.nonzero(ious_mask, as_tuple=True)
 
-                if not pred_indices.numel():  # no predicts matched gts
+                if not pred_indices.numel():
                     metrics_per_class[label.item()]["FNs"] += n_gts
                     metrics_per_class[label.item()]["IoUs"].extend([0] * n_gts)
                     metrics_per_class[label.item()]["FPs"] += n_preds
@@ -122,8 +147,6 @@ class Validator:
                     continue
 
                 iou_values = ious[pred_indices, gt_indices]
-
-                # sorting by IoU to match hgihest scores first
                 sorted_indices = torch.argsort(-iou_values)
                 pred_indices = pred_indices[sorted_indices]
                 gt_indices = gt_indices[sorted_indices]
@@ -147,10 +170,8 @@ class Validator:
         return metrics_per_class
 
     def _compute_metrics_and_confusion_matrix(self, preds):
-        # Initialize per-class metrics
         metrics_per_class = defaultdict(lambda: {"TPs": 0, "FPs": 0, "FNs": 0, "IoUs": []})
 
-        # Collect all class IDs
         all_classes = set()
         for pred in preds:
             all_classes.update(pred["labels"].tolist())
@@ -159,12 +180,12 @@ class Validator:
         all_classes = sorted(list(all_classes))
         class_to_idx = {cls_id: idx for idx, cls_id in enumerate(all_classes)}
         n_classes = len(all_classes)
-        conf_matrix = np.zeros((n_classes + 1, n_classes + 1), dtype=int)  # +1 for background class
+        conf_matrix = np.zeros((n_classes + 1, n_classes + 1), dtype=int)
 
         for pred, gt in zip(preds, self.gt):
-            pred_boxes = pred["boxes"]
+            pred_boxes = _ensure_xyxy_boxes(pred["boxes"])
             pred_labels = pred["labels"]
-            gt_boxes = gt["boxes"]
+            gt_boxes = _ensure_xyxy_boxes(gt["boxes"])
             gt_labels = gt["labels"]
 
             n_preds = len(pred_boxes)
@@ -174,27 +195,21 @@ class Validator:
                 continue
 
             ious = box_iou(pred_boxes, gt_boxes) if n_preds > 0 and n_gts > 0 else torch.tensor([])
-            # Assign matches between preds and gts
             matched_pred_indices = set()
             matched_gt_indices = set()
 
             if ious.numel() > 0:
-                # For each pred box, find the gt box with highest IoU
                 ious_mask = ious >= self.iou_thresh
                 pred_indices, gt_indices = torch.nonzero(ious_mask, as_tuple=True)
                 iou_values = ious[pred_indices, gt_indices]
 
-                # Sorting by IoU to match highest scores first
                 sorted_indices = torch.argsort(-iou_values)
                 pred_indices = pred_indices[sorted_indices]
                 gt_indices = gt_indices[sorted_indices]
                 iou_values = iou_values[sorted_indices]
 
                 for pred_idx, gt_idx, iou in zip(pred_indices, gt_indices, iou_values):
-                    if (
-                        pred_idx.item() in matched_pred_indices
-                        or gt_idx.item() in matched_gt_indices
-                    ):
+                    if pred_idx.item() in matched_pred_indices or gt_idx.item() in matched_gt_indices:
                         continue
                     matched_pred_indices.add(pred_idx.item())
                     matched_gt_indices.add(gt_idx.item())
@@ -204,40 +219,30 @@ class Validator:
 
                     pred_cls_idx = class_to_idx[pred_label]
                     gt_cls_idx = class_to_idx[gt_label]
-
-                    # Update confusion matrix
                     conf_matrix[gt_cls_idx, pred_cls_idx] += 1
 
-                    # Update per-class metrics
                     if pred_label == gt_label:
                         metrics_per_class[gt_label]["TPs"] += 1
                         metrics_per_class[gt_label]["IoUs"].append(iou.item())
                     else:
-                        # Misclassification
                         metrics_per_class[gt_label]["FNs"] += 1
                         metrics_per_class[pred_label]["FPs"] += 1
                         metrics_per_class[gt_label]["IoUs"].append(0)
                         metrics_per_class[pred_label]["IoUs"].append(0)
 
-            # Unmatched predictions (False Positives)
             unmatched_pred_indices = set(range(n_preds)) - matched_pred_indices
             for pred_idx in unmatched_pred_indices:
                 pred_label = pred_labels[pred_idx].item()
                 pred_cls_idx = class_to_idx[pred_label]
-                # Update confusion matrix: background row
                 conf_matrix[n_classes, pred_cls_idx] += 1
-                # Update per-class metrics
                 metrics_per_class[pred_label]["FPs"] += 1
                 metrics_per_class[pred_label]["IoUs"].append(0)
 
-            # Unmatched ground truths (False Negatives)
             unmatched_gt_indices = set(range(n_gts)) - matched_gt_indices
             for gt_idx in unmatched_gt_indices:
                 gt_label = gt_labels[gt_idx].item()
                 gt_cls_idx = class_to_idx[gt_label]
-                # Update confusion matrix: background column
                 conf_matrix[gt_cls_idx, n_classes] += 1
-                # Update per-class metrics
                 metrics_per_class[gt_label]["FNs"] += 1
                 metrics_per_class[gt_label]["IoUs"].append(0)
 
@@ -258,7 +263,6 @@ class Validator:
             plt.xticks(tick_marks, class_labels, rotation=45)
             plt.yticks(tick_marks, class_labels)
 
-            # Add labels to each cell
             thresh = self.conf_matrix.max() / 2.0
             for i in range(self.conf_matrix.shape[0]):
                 for j in range(self.conf_matrix.shape[1]):
@@ -278,20 +282,15 @@ class Validator:
 
         thresholds = self.thresholds
         precisions, recalls, f1_scores = [], [], []
-
-        # Store the original predictions to reset after each threshold
         original_preds = copy.deepcopy(self.preds)
 
         for threshold in thresholds:
-            # Filter predictions based on the current threshold
             filtered_preds = filter_preds(copy.deepcopy(original_preds), threshold)
-            # Compute metrics with the filtered predictions
             metrics = self._compute_main_metrics(filtered_preds)
             precisions.append(metrics["precision"])
             recalls.append(metrics["recall"])
             f1_scores.append(metrics["f1"])
 
-        # Plot Precision and Recall vs Threshold
         plt.figure()
         plt.plot(thresholds, precisions, label="Precision", marker="o")
         plt.plot(thresholds, recalls, label="Recall", marker="o")
@@ -303,7 +302,6 @@ class Validator:
         plt.savefig(path_to_save / "precision_recall_vs_threshold.png")
         plt.close()
 
-        # Plot F1 Score vs Threshold
         plt.figure()
         plt.plot(thresholds, f1_scores, label="F1 Score", marker="o")
         plt.xlabel("Threshold")
@@ -313,14 +311,11 @@ class Validator:
         plt.savefig(path_to_save / "f1_score_vs_threshold.png")
         plt.close()
 
-        # Find the best threshold based on F1 Score (last occurence)
         best_idx = len(f1_scores) - np.argmax(f1_scores[::-1]) - 1
         best_threshold = thresholds[best_idx]
         best_f1 = f1_scores[best_idx]
 
-        logger.info(
-            f"Best Threshold: {round(best_threshold, 2)} with F1 Score: {round(best_f1, 3)}"
-        )
+        logger.info(f"Best Threshold: {round(best_threshold, 2)} with F1 Score: {round(best_f1, 3)}")
 
 
 def filter_preds(preds, conf_thresh):
@@ -334,10 +329,11 @@ def filter_preds(preds, conf_thresh):
 
 def scale_boxes(boxes, orig_shape, resized_shape):
     """
-    boxes in format: [x1, y1, x2, y2], absolute values
+    boxes in format: [x1, y1, x2, y2] or [cx, cy, w, h, angle], absolute values.
     orig_shape: [height, width]
     resized_shape: [height, width]
     """
+    boxes = boxes.clone()
     scale_x = orig_shape[1] / resized_shape[1]
     scale_y = orig_shape[0] / resized_shape[0]
     boxes[:, 0] *= scale_x
