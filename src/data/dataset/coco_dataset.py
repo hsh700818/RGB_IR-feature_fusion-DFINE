@@ -36,12 +36,36 @@ class CocoDetection(FasterCocoDetection, DetDataset):
         self.return_masks = return_masks
         self.remap_mscoco_category = remap_mscoco_category
         self.prepare = ConvertCocoPolysToMask(return_masks)
+        self._filter_missing_rgb_ir_pairs()
 
     def __getitem__(self, idx):
         img, target = self.load_item(idx)
         if self._transforms is not None:
             img, target, _ = self._transforms(img, target, self)
         return img, target
+
+    def _filter_missing_rgb_ir_pairs(self):
+        """Drop COCO image ids that do not have both visible and infrared files."""
+        kept_ids = []
+        missing = []
+        for image_id in list(self.ids):
+            img_info = self.coco.loadImgs(image_id)[0]
+            file_name = img_info['file_name']
+            try:
+                path_v = self._resolve_visible_path(file_name)
+                path_ir = self._resolve_ir_path(path_v)
+                kept_ids.append(image_id)
+            except FileNotFoundError as exc:
+                missing.append((file_name, str(exc).split('\n')[0]))
+
+        if missing:
+            print(
+                f"[CocoDetection] Skip {len(missing)} images without RGB-IR pairs "
+                f"from {self.ann_file}. Keep {len(kept_ids)} images."
+            )
+            for file_name, reason in missing[:20]:
+                print(f"[CocoDetection] missing pair: {file_name} | {reason}")
+        self.ids = kept_ids
 
     def _resolve_visible_path(self, file_name):
         """Resolve visible image paths for common DroneVehicle COCO layouts."""
