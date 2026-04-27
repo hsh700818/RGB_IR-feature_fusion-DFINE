@@ -9,7 +9,7 @@ from torch.cuda.amp.grad_scaler import GradScaler
 from torch.utils.tensorboard import SummaryWriter
 
 from ..data import CocoEvaluator
-from ..data.dataset import mscoco_category2label
+from ..data.dataset import mscoco_category2label, mscoco_category2name
 from ..misc import MetricLogger, SmoothedValue, dist_utils, save_samples
 from ..optim import ModelEMA, Warmup
 from .validator import Validator, scale_boxes
@@ -69,9 +69,7 @@ def train_one_epoch(
                 state = model.state_dict()
                 new_state = {}
                 for key, value in model.state_dict().items():
-                    # Replace 'module' with 'model' in each key
                     new_key = key.replace("module.", "")
-                    # Add the updated key-value pair to the state dictionary
                     state[new_key] = value
                 new_state["model"] = state
                 dist_utils.save_on_master(new_state, "./NaN.pth")
@@ -103,7 +101,6 @@ def train_one_epoch(
 
             optimizer.step()
 
-        # ema
         if ema is not None:
             ema.update(model)
 
@@ -133,10 +130,64 @@ def train_one_epoch(
         wandb.log(
             {"lr": optimizer.param_groups[0]["lr"], "epoch": epoch, "train/loss": np.mean(losses)}
         )
-    # gather the stats from all processes
     metric_logger.synchronize_between_processes()
     print("Averaged stats:", metric_logger)
     return {k: meter.global_avg for k, meter in metric_logger.meters.items()}
+
+
+def _compute_coco_ap50_per_class(coco_eval, category2name=None):
+    """Return overall mAP@0.5 and per-class AP@0.5 from a COCO-style evaluator.
+
+    COCO precision shape is [T, R, K, A, M]: IoU thresholds, recall thresholds,
+    categories, area ranges, and max detections.  AP@0.5 uses IoU=0.50, area=all,
+    and maxDets=100 when available.
+    """
+    if coco_eval is None or not hasattr(coco_eval, "eval") or coco_eval.eval is None:
+        return {}, None
+
+    precision = coco_eval.eval.get("precision", None)
+    if precision is None:
+        return {}, None
+
+    params = coco_eval.params
+    iou_thrs = np.asarray(params.iouThrs)
+    cat_ids = list(params.catIds)
+    area_lbl = list(getattr(params, "areaRngLbl", ["all"]))
+    max_dets = list(getattr(params, "maxDets", [100]))
+
+    iou_idx = int(np.argmin(np.abs(iou_thrs - 0.5)))
+    area_idx = area_lbl.index("all") if "all" in area_lbl else 0
+    maxdet_idx = max_dets.index(100) if 100 in max_dets else len(max_dets) - 1
+
+    per_class_ap50 = {}
+    ap_values = []
+    for k, cat_id in enumerate(cat_ids):
+        precision_k = precision[iou_idx, :, k, area_idx, maxdet_idx]
+        precision_k = precision_k[precision_k > -1]
+        ap = float(np.mean(precision_k)) if precision_k.size else float("nan")
+        name = category2name.get(cat_id, str(cat_id)) if category2name else str(cat_id)
+        per_class_ap50[name] = ap
+        if not math.isnan(ap):
+            ap_values.append(ap)
+
+    map50 = float(np.mean(ap_values)) if ap_values else float("nan")
+    return per_class_ap50, map50
+
+
+def _print_ap50_table(per_class_ap50, map50):
+    if not per_class_ap50:
+        return
+    print("\nDroneVehicle AP@0.5 per class:")
+    print("+-------------+--------+")
+    print("| class       | AP@0.5 |")
+    print("+-------------+--------+")
+    for name, ap in per_class_ap50.items():
+        ap_str = "nan" if math.isnan(ap) else f"{ap:.4f}"
+        print(f"| {name:<11} | {ap_str:>6} |")
+    map_str = "nan" if math.isnan(map50) else f"{map50:.4f}"
+    print("+-------------+--------+")
+    print(f"| {'mAP@0.5':<11} | {map_str:>6} |")
+    print("+-------------+--------+\n")
 
 
 @torch.no_grad()
@@ -159,13 +210,9 @@ def evaluate(
     coco_evaluator.cleanup()
 
     metric_logger = MetricLogger(delimiter="  ")
-    # metric_logger.add_meter('class_error', SmoothedValue(window_size=1, fmt='{value:.2f}'))
     header = "Test:"
 
-    # iou_types = tuple(k for k in ('segm', 'bbox') if k in postprocessor.keys())
     iou_types = coco_evaluator.iou_types
-    # coco_evaluator = CocoEvaluator(base_ds, iou_types)
-    # coco_evaluator.coco_eval[iou_types[0]].params.iouThrs = [0, 0.1, 0.5, 0.75]
 
     gt: List[Dict[str, torch.Tensor]] = []
     preds: List[Dict[str, torch.Tensor]] = []
@@ -183,28 +230,18 @@ def evaluate(
         targets = [{k: v.to(device) if isinstance(v, torch.Tensor) else v for k, v in t.items()} for t in targets]
 
         outputs = model(samples)
-        # with torch.autocast(device_type=str(device)):
-        #     outputs = model(samples)
 
-        # TODO (lyuwenyu), fix dataset converted using `convert_to_coco_api`?
         orig_target_sizes = torch.stack([t["orig_size"] for t in targets], dim=0)
-        # orig_target_sizes = torch.tensor([[samples.shape[-1], samples.shape[-2]]], device=samples.device)
-
         results = postprocessor(outputs, orig_target_sizes)
-
-        # if 'segm' in postprocessor.keys():
-        #     target_sizes = torch.stack([t["size"] for t in targets], dim=0)
-        #     results = postprocessor['segm'](results, outputs, orig_target_sizes, target_sizes)
 
         res = {target["image_id"].item(): output for target, output in zip(targets, results)}
         if coco_evaluator is not None:
             coco_evaluator.update(res)
 
-        # validator format for metrics
         for idx, (target, result) in enumerate(zip(targets, results)):
             gt.append(
                 {
-                    "boxes": scale_boxes(  # from model input size to original img size
+                    "boxes": scale_boxes(
                         target["boxes"],
                         (target["orig_size"][1], target["orig_size"][0]),
                         (samples[idx].shape[-1], samples[idx].shape[-2]),
@@ -221,7 +258,6 @@ def evaluate(
                 {"boxes": result["boxes"], "labels": labels, "scores": result["scores"]}
             )
 
-    # Conf matrix, F1, Precision, Recall, box IoU
     metrics = Validator(gt, preds).compute_metrics()
     print("Metrics:", metrics)
     if use_wandb:
@@ -229,22 +265,25 @@ def evaluate(
         metrics["epoch"] = epoch
         wandb.log(metrics)
 
-    # gather the stats from all processes
     metric_logger.synchronize_between_processes()
     print("Averaged stats:", metric_logger)
     if coco_evaluator is not None:
         coco_evaluator.synchronize_between_processes()
 
-    # accumulate predictions from all images
     if coco_evaluator is not None:
         coco_evaluator.accumulate()
         coco_evaluator.summarize()
 
     stats = {}
-    # stats = {k: meter.global_avg for k, meter in metric_logger.meters.items()}
     if coco_evaluator is not None:
         if "bbox" in iou_types:
-            stats["coco_eval_bbox"] = coco_evaluator.coco_eval["bbox"].stats.tolist()
+            bbox_eval = coco_evaluator.coco_eval["bbox"]
+            stats["coco_eval_bbox"] = bbox_eval.stats.tolist()
+            per_class_ap50, map50 = _compute_coco_ap50_per_class(bbox_eval, mscoco_category2name)
+            _print_ap50_table(per_class_ap50, map50)
+            stats["mAP50"] = map50
+            for name, ap in per_class_ap50.items():
+                stats[f"AP50_{name}"] = ap
         if "segm" in iou_types:
             stats["coco_eval_masks"] = coco_evaluator.coco_eval["segm"].stats.tolist()
 
