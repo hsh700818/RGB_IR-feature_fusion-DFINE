@@ -1,70 +1,210 @@
+import copy
+
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-import copy
+
 from ...core import register
 
-__all__ = ['DFINE']
+try:
+    from torchvision.ops import DeformConv2d
+except Exception:
+    DeformConv2d = None
 
-# 1. 全局-局部协同注意力模块 (参考 Aerial Image TGRS 2025)
-# 作用：通过全局池化锁定车辆与环境的联系，利用小卷积核保护航拍小目标的边缘细节
+__all__ = ["DFINE"]
+
+
 class GLSA(nn.Module):
+    """
+    Global-local spatial attention for small aerial targets.
+    It keeps the original residual path and uses lightweight spatial/channel
+    weights to refine fused RGB-IR features.
+    """
+
     def __init__(self, ch):
         super().__init__()
+        hidden_ch = max(ch // 8, 16)
+
         self.avg_pool_h = nn.AdaptiveAvgPool2d((None, 1))
         self.avg_pool_w = nn.AdaptiveAvgPool2d((1, None))
-        
+
         self.conv_h = nn.Conv2d(ch, ch, kernel_size=(3, 1), padding=(1, 0), groups=ch)
         self.conv_w = nn.Conv2d(ch, ch, kernel_size=(1, 3), padding=(0, 1), groups=ch)
-        
-        # 通道注意力分支
+
         self.channel_att = nn.Sequential(
             nn.AdaptiveAvgPool2d(1),
-            nn.Conv2d(ch, ch // 8, 1),
+            nn.Conv2d(ch, hidden_ch, 1),
             nn.ReLU(inplace=True),
-            nn.Conv2d(ch // 8, ch, 1),
-            nn.Sigmoid()
+            nn.Conv2d(hidden_ch, ch, 1),
+            nn.Sigmoid(),
         )
 
     def forward(self, x):
         identity = x
-        # 提取垂直与水平方向的空间注意力
         x_h = self.conv_h(self.avg_pool_h(x))
         x_w = self.conv_w(self.avg_pool_w(x))
-        # 提取通道权重
         x_c = self.channel_att(x)
-        # 空间与通道联合增强
         return identity * x_h.sigmoid() * x_w.sigmoid() * x_c
 
-# 2. 光照感知自适应融合模块 (参考 IMHFNet TGRS 2025)
-# 作用：根据 RGB 亮度自动调整。白天光照充足时平衡两分支，全黑夜间自动抑制噪声巨大的可见光分支。
-class IlluminationAwareFusion(nn.Module):
+
+class AlignmentAwareFusion(nn.Module):
+    """
+    Residual deformable alignment for RGB-IR feature misalignment.
+
+    The learned offset is bounded and initialized to zero. The deformable branch
+    is attached through a zero-initialized residual scale, so replacing the old
+    fusion block does not immediately disturb a pretrained or partially trained
+    model.
+    """
+
+    def __init__(self, ch, max_offset=4.0):
+        super().__init__()
+        self.max_offset = float(max_offset)
+
+        self.offset_conv = nn.Conv2d(ch * 2, 2 * 3 * 3, kernel_size=3, padding=1)
+        self.mask_conv = nn.Conv2d(ch * 2, 1 * 3 * 3, kernel_size=3, padding=1)
+
+        if DeformConv2d is not None:
+            self.dcn = DeformConv2d(ch, ch, kernel_size=3, padding=1, bias=False)
+            self.fallback_align = None
+        else:
+            # Fallback keeps the code runnable when torchvision was built
+            # without deformable convolution support.
+            self.dcn = None
+            self.fallback_align = nn.Sequential(
+                nn.Conv2d(ch, ch, kernel_size=3, padding=1, groups=ch, bias=False),
+                nn.Conv2d(ch, ch, kernel_size=1, bias=False),
+            )
+
+        self.align_scale = nn.Parameter(torch.zeros(1))
+        self.fusion_gate = nn.Sequential(
+            nn.AdaptiveAvgPool2d(1),
+            nn.Conv2d(ch * 2, ch, 1),
+            nn.Sigmoid(),
+        )
+
+        self.reset_parameters()
+
+    def reset_parameters(self):
+        nn.init.constant_(self.offset_conv.weight, 0.0)
+        nn.init.constant_(self.offset_conv.bias, 0.0)
+        nn.init.constant_(self.mask_conv.weight, 0.0)
+        nn.init.constant_(self.mask_conv.bias, 0.0)
+
+    def forward(self, f_rgb, f_ir):
+        feat_cat = torch.cat([f_rgb, f_ir], dim=1)
+
+        if self.dcn is not None:
+            offsets = torch.tanh(self.offset_conv(feat_cat)) * self.max_offset
+            mask = torch.sigmoid(self.mask_conv(feat_cat))
+            aligned_delta = self.dcn(f_ir, offsets, mask)
+        else:
+            aligned_delta = self.fallback_align(f_ir)
+
+        f_ir_aligned = f_ir + self.align_scale * aligned_delta
+
+        # A light modality gate avoids forcing IR-aligned features to dominate
+        # all scenes. In bright scenes it can keep more RGB detail; in low-light
+        # scenes it can lean toward IR.
+        gate = self.fusion_gate(torch.cat([f_rgb, f_ir_aligned], dim=1))
+        return f_rgb * gate + f_ir_aligned * (1.0 - gate)
+
+
+class CrossModalInteraction(nn.Module):
+    """
+    Memory-safe cross-modal interaction.
+
+    The Gemini-style full HW x HW attention is expensive on P3. This variant
+    performs the cross-modal attention on adaptively pooled tokens and then
+    upsamples the complementary context back to the original feature size.
+    """
+
+    def __init__(self, ch, reduction=4, max_tokens=400):
+        super().__init__()
+        attn_ch = max(ch // reduction, 32)
+        self.max_tokens = int(max_tokens)
+
+        self.query_conv = nn.Conv2d(ch, attn_ch, 1)
+        self.key_conv = nn.Conv2d(ch, attn_ch, 1)
+        self.value_conv = nn.Conv2d(ch, ch, 1)
+        self.gamma = nn.Parameter(torch.zeros(1))
+
+    def _pool_if_needed(self, x):
+        _, _, h, w = x.shape
+        if h * w <= self.max_tokens:
+            return x, (h, w)
+
+        pooled_hw = max(int(self.max_tokens ** 0.5), 1)
+        return F.adaptive_avg_pool2d(x, (pooled_hw, pooled_hw)), (pooled_hw, pooled_hw)
+
+    def forward(self, f_main, f_aux):
+        b, c, h, w = f_main.shape
+
+        f_main_pool, _ = self._pool_if_needed(f_main)
+        f_aux_pool, _ = self._pool_if_needed(f_aux)
+
+        _, _, hp, wp = f_main_pool.shape
+        token_num = hp * wp
+
+        proj_query = self.query_conv(f_main_pool).flatten(2).transpose(1, 2)
+        proj_key = self.key_conv(f_aux_pool).flatten(2)
+        energy = torch.bmm(proj_query, proj_key) / (proj_key.shape[1] ** 0.5)
+        attention = torch.softmax(energy, dim=-1)
+
+        proj_value = self.value_conv(f_aux_pool).flatten(2)
+        out = torch.bmm(proj_value, attention.transpose(1, 2))
+        out = out.view(b, c, hp, wp)
+
+        if token_num != h * w:
+            out = F.interpolate(out, size=(h, w), mode="bilinear", align_corners=False)
+
+        return f_main + self.gamma * out
+
+
+class AdvancedMultimodalFusion(nn.Module):
+    """
+    AAF + memory-safe CMI + illumination-aware fusion.
+
+    It replaces the previous IlluminationAwareFusion while keeping compatible
+    names for illum_extract, fusion_conv and glsa so older tuning checkpoints can
+    still reuse part of their fusion weights.
+    """
+
     def __init__(self, ch):
         super().__init__()
-        # 用于提取光照强度的轻量级预测器
+        self.alignment = AlignmentAwareFusion(ch)
+        self.rgb_enhance = CrossModalInteraction(ch)
+        self.ir_enhance = CrossModalInteraction(ch)
+
         self.illum_extract = nn.Sequential(
             nn.AdaptiveAvgPool2d(1),
-            nn.Conv2d(ch, ch // 4, 1),
+            nn.Conv2d(ch, max(ch // 4, 16), 1),
             nn.ReLU(inplace=True),
-            nn.Conv2d(ch // 4, 1, 1),
-            nn.Sigmoid()
+            nn.Conv2d(max(ch // 4, 16), 1, 1),
+            nn.Sigmoid(),
         )
-        # 多模态特征融合层
         self.fusion_conv = nn.Conv2d(ch * 2, ch, 1)
-        # 融合后的特征增强
         self.glsa = GLSA(ch)
 
     def forward(self, f_rgb, f_ir):
-        # 1. 估计当前区域的光照得分 (0:深夜, 1:明亮白天)
-        illum_score = self.illum_extract(f_rgb) 
-        
-        # 2. 动态模态调节：夜间增加 IR 占比，抑制 RGB 噪声
-        # 融合公式：f_weighted = [RGB * illum, IR * (2.0 - illum)]
-        f_cat = torch.cat([f_rgb * illum_score, f_ir * (2.0 - illum_score)], dim=1)
+        f_ir_aligned = self.alignment(f_rgb, f_ir)
+
+        f_rgb_ext = self.rgb_enhance(f_rgb, f_ir_aligned)
+        f_ir_ext = self.ir_enhance(f_ir_aligned, f_rgb)
+
+        illum_score = self.illum_extract(f_rgb)
+        f_cat = torch.cat(
+            [f_rgb_ext * illum_score, f_ir_ext * (2.0 - illum_score)],
+            dim=1,
+        )
         f_fused = self.fusion_conv(f_cat)
-        
-        # 3. 进阶特征增强 (针对 DroneVehicle 的非对齐和微小目标)
+
         return self.glsa(f_fused)
+
+
+# Backward-compatible alias for configs or checkpoints that refer to the old name.
+IlluminationAwareFusion = AdvancedMultimodalFusion
+
 
 @register()
 class DFINE(nn.Module):
@@ -73,38 +213,28 @@ class DFINE(nn.Module):
     def __init__(self, backbone: nn.Module, encoder: nn.Module, decoder: nn.Module):
         super().__init__()
         self.backbone = backbone
-        # 深拷贝一个相同架构的 Backbone 用于红外 (IR) 流
         self.backbone_ir = copy.deepcopy(backbone)
         self.encoder = encoder
         self.decoder = decoder
-        
-        # 动态获取编码器需要的通道数 (支持 P3, P4, P5 尺度)
-        in_channels = encoder.in_channels 
-        
-        # 为每一层特征图建立光照感知融合层
-        self.fusion_layers = nn.ModuleList([
-            IlluminationAwareFusion(ch) for ch in in_channels
-        ])
+
+        in_channels = encoder.in_channels
+        self.fusion_layers = nn.ModuleList(
+            [AdvancedMultimodalFusion(ch) for ch in in_channels]
+        )
 
     def forward(self, x, targets=None):
-        # 输入 x 的维度为 [Batch, 6, H, W]
-        # 1. 拆分通道：前 3 通道为可见光，后 3 通道为红外
+        # Input shape: [B, 6, H, W]. The first 3 channels are RGB and the
+        # last 3 channels are IR.
         x_rgb = x[:, :3, :, :]
         x_ir = x[:, 3:, :, :]
 
-        # 2. 并行双流特征提取
         feats_rgb = self.backbone(x_rgb)
         feats_ir = self.backbone_ir(x_ir)
 
-        # 3. 逐层自适应融合
         fused_feats = []
-        for i, (f_rgb, f_ir) in enumerate(zip(feats_rgb, feats_ir)):
-            # 融合 RGB 和 IR 特征，并应用光照引导
-            f_fused = self.fusion_layers[i](f_rgb, f_ir)
-            fused_feats.append(f_fused)
+        for f_rgb, f_ir, fusion in zip(feats_rgb, feats_ir, self.fusion_layers):
+            fused_feats.append(fusion(f_rgb, f_ir))
 
-        # 4. 传入后续的 HybridEncoder 和 Decoder
-        # 如果你正在切换到 O2-DFINE，此处的 Decoder 会处理旋转框分布回归 (ADR)
         x = self.encoder(fused_feats)
         x = self.decoder(x, targets)
         return x
