@@ -53,7 +53,7 @@ class CocoDetection(FasterCocoDetection, DetDataset):
             file_name = img_info['file_name']
             try:
                 path_v = self._resolve_visible_path(file_name)
-                path_ir = self._resolve_ir_path(path_v)
+                self._resolve_ir_path(path_v)
                 kept_ids.append(image_id)
             except FileNotFoundError as exc:
                 missing.append((file_name, str(exc).split('\n')[0]))
@@ -81,8 +81,12 @@ class CocoDetection(FasterCocoDetection, DetDataset):
             os.path.join(self.img_folder, base),
             os.path.join(self.img_folder, 'img', base),
             os.path.join(self.img_folder, 'trainimg', base),
+            os.path.join(self.img_folder, 'valimg', base),
+            os.path.join(self.img_folder, 'testimg', base),
             os.path.join(os.path.dirname(self.img_folder), 'img', base),
             os.path.join(os.path.dirname(self.img_folder), 'trainimg', base),
+            os.path.join(os.path.dirname(self.img_folder), 'valimg', base),
+            os.path.join(os.path.dirname(self.img_folder), 'testimg', base),
         ])
 
         stem, ext = os.path.splitext(base)
@@ -92,8 +96,12 @@ class CocoDetection(FasterCocoDetection, DetDataset):
                 os.path.join(self.img_folder, alt),
                 os.path.join(self.img_folder, 'img', alt),
                 os.path.join(self.img_folder, 'trainimg', alt),
+                os.path.join(self.img_folder, 'valimg', alt),
+                os.path.join(self.img_folder, 'testimg', alt),
                 os.path.join(os.path.dirname(self.img_folder), 'img', alt),
                 os.path.join(os.path.dirname(self.img_folder), 'trainimg', alt),
+                os.path.join(os.path.dirname(self.img_folder), 'valimg', alt),
+                os.path.join(os.path.dirname(self.img_folder), 'testimg', alt),
             ])
 
         seen = set()
@@ -122,25 +130,39 @@ class CocoDetection(FasterCocoDetection, DetDataset):
 
         candidates = [
             path_v.replace('trainimg', 'trainimgr'),
+            path_v.replace('valimg', 'valimgr'),
+            path_v.replace('testimg', 'testimgr'),
             path_v.replace('/img/', '/imgr/'),
             path_v.replace('\\img\\', '\\imgr\\'),
             os.path.join(directory.replace('trainimg', 'trainimgr'), base),
+            os.path.join(directory.replace('valimg', 'valimgr'), base),
+            os.path.join(directory.replace('testimg', 'testimgr'), base),
             os.path.join(directory.replace('img', 'imgr'), base),
             os.path.join(parent, 'imgr', base),
             os.path.join(parent, 'trainimgr', base),
+            os.path.join(parent, 'valimgr', base),
+            os.path.join(parent, 'testimgr', base),
             os.path.join(directory, stem + 'r' + ext),
             path_v.replace('.jpg', 'r.jpg'),
             path_v.replace('.JPG', 'r.JPG'),
+            path_v.replace('.jpeg', 'r.jpeg'),
+            path_v.replace('.JPEG', 'r.JPEG'),
             path_v.replace('.png', 'r.png'),
             path_v.replace('.PNG', 'r.PNG'),
+            path_v.replace('.bmp', 'r.bmp'),
+            path_v.replace('.BMP', 'r.BMP'),
         ]
 
         for suffix in ['.jpg', '.JPG', '.jpeg', '.JPEG', '.png', '.PNG', '.bmp', '.BMP']:
             candidates.extend([
                 os.path.join(parent, 'imgr', stem + suffix),
                 os.path.join(parent, 'trainimgr', stem + suffix),
+                os.path.join(parent, 'valimgr', stem + suffix),
+                os.path.join(parent, 'testimgr', stem + suffix),
                 os.path.join(parent, 'imgr', stem + 'r' + suffix),
                 os.path.join(parent, 'trainimgr', stem + 'r' + suffix),
+                os.path.join(parent, 'valimgr', stem + 'r' + suffix),
+                os.path.join(parent, 'testimgr', stem + 'r' + suffix),
             ])
 
         seen = set()
