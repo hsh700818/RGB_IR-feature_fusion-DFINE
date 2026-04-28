@@ -364,7 +364,7 @@ def evaluate(
 
     for i, (samples, targets) in enumerate(metric_logger.log_every(data_loader, 10, header)):
         if i < num_visualization_sample_batch and output_dir is not None and dist_utils.is_main_process():
-            save_samples(samples, targets, output_dir, "val", normalized=False, box_fmt="xyxy")
+            save_samples(samples, targets, output_dir, "val", normalized=True, box_fmt="cxcywh")
 
         samples = samples.to(device)
         targets = [{k: v.to(device) if isinstance(v, torch.Tensor) else v for k, v in t.items()} for t in targets]
