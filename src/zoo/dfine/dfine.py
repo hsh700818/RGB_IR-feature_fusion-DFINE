@@ -68,8 +68,6 @@ class AlignmentAwareFusion(nn.Module):
             self.dcn = DeformConv2d(ch, ch, kernel_size=3, padding=1, bias=False)
             self.fallback_align = None
         else:
-            # Fallback keeps the code runnable when torchvision was built
-            # without deformable convolution support.
             self.dcn = None
             self.fallback_align = nn.Sequential(
                 nn.Conv2d(ch, ch, kernel_size=3, padding=1, groups=ch, bias=False),
@@ -102,10 +100,6 @@ class AlignmentAwareFusion(nn.Module):
             aligned_delta = self.fallback_align(f_ir)
 
         f_ir_aligned = f_ir + self.align_scale * aligned_delta
-
-        # A light modality gate avoids forcing IR-aligned features to dominate
-        # all scenes. In bright scenes it can keep more RGB detail; in low-light
-        # scenes it can lean toward IR.
         gate = self.fusion_gate(torch.cat([f_rgb, f_ir_aligned], dim=1))
         return f_rgb * gate + f_ir_aligned * (1.0 - gate)
 
@@ -119,7 +113,7 @@ class CrossModalInteraction(nn.Module):
     upsamples the complementary context back to the original feature size.
     """
 
-    def __init__(self, ch, reduction=4, max_tokens=400):
+    def __init__(self, ch, reduction=4, max_tokens=196):
         super().__init__()
         attn_ch = max(ch // reduction, 32)
         self.max_tokens = int(max_tokens)
@@ -163,24 +157,31 @@ class CrossModalInteraction(nn.Module):
 
 class AdvancedMultimodalFusion(nn.Module):
     """
-    AAF + memory-safe CMI + illumination-aware fusion.
+    AAF + optional memory-safe CMI + illumination-aware fusion.
 
-    It replaces the previous IlluminationAwareFusion while keeping compatible
-    names for illum_extract, fusion_conv and glsa so older tuning checkpoints can
-    still reuse part of their fusion weights.
+    P3 carries small target details and is the largest feature map, so CMI can
+    be disabled on that level to reduce runtime while keeping lightweight
+    alignment and illumination-aware fusion.
     """
 
-    def __init__(self, ch):
+    def __init__(self, ch, use_cmi=True, max_tokens=196):
         super().__init__()
+        self.use_cmi = bool(use_cmi)
         self.alignment = AlignmentAwareFusion(ch)
-        self.rgb_enhance = CrossModalInteraction(ch)
-        self.ir_enhance = CrossModalInteraction(ch)
 
+        if self.use_cmi:
+            self.rgb_enhance = CrossModalInteraction(ch, max_tokens=max_tokens)
+            self.ir_enhance = CrossModalInteraction(ch, max_tokens=max_tokens)
+        else:
+            self.rgb_enhance = nn.Identity()
+            self.ir_enhance = nn.Identity()
+
+        hidden_ch = max(ch // 4, 16)
         self.illum_extract = nn.Sequential(
             nn.AdaptiveAvgPool2d(1),
-            nn.Conv2d(ch, max(ch // 4, 16), 1),
+            nn.Conv2d(ch, hidden_ch, 1),
             nn.ReLU(inplace=True),
-            nn.Conv2d(max(ch // 4, 16), 1, 1),
+            nn.Conv2d(hidden_ch, 1, 1),
             nn.Sigmoid(),
         )
         self.fusion_conv = nn.Conv2d(ch * 2, ch, 1)
@@ -189,8 +190,12 @@ class AdvancedMultimodalFusion(nn.Module):
     def forward(self, f_rgb, f_ir):
         f_ir_aligned = self.alignment(f_rgb, f_ir)
 
-        f_rgb_ext = self.rgb_enhance(f_rgb, f_ir_aligned)
-        f_ir_ext = self.ir_enhance(f_ir_aligned, f_rgb)
+        if self.use_cmi:
+            f_rgb_ext = self.rgb_enhance(f_rgb, f_ir_aligned)
+            f_ir_ext = self.ir_enhance(f_ir_aligned, f_rgb)
+        else:
+            f_rgb_ext = f_rgb
+            f_ir_ext = f_ir_aligned
 
         illum_score = self.illum_extract(f_rgb)
         f_cat = torch.cat(
@@ -202,7 +207,6 @@ class AdvancedMultimodalFusion(nn.Module):
         return self.glsa(f_fused)
 
 
-# Backward-compatible alias for configs or checkpoints that refer to the old name.
 IlluminationAwareFusion = AdvancedMultimodalFusion
 
 
@@ -218,13 +222,16 @@ class DFINE(nn.Module):
         self.decoder = decoder
 
         in_channels = encoder.in_channels
-        self.fusion_layers = nn.ModuleList(
-            [AdvancedMultimodalFusion(ch) for ch in in_channels]
-        )
+        self.fusion_layers = nn.ModuleList()
+        for level_idx, ch in enumerate(in_channels):
+            # P3 is the largest feature level. Keep it light for speed while
+            # still preserving small-object details through P3 itself.
+            use_cmi = level_idx > 0
+            self.fusion_layers.append(
+                AdvancedMultimodalFusion(ch, use_cmi=use_cmi, max_tokens=196)
+            )
 
     def forward(self, x, targets=None):
-        # Input shape: [B, 6, H, W]. The first 3 channels are RGB and the
-        # last 3 channels are IR.
         x_rgb = x[:, :3, :, :]
         x_ir = x[:, 3:, :, :]
 
