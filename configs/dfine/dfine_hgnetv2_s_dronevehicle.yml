@@ -85,7 +85,10 @@ train_dataloader:
         - {type: ConvertBoxes, fmt: cxcywh, normalize: True}
   shuffle: True
   total_batch_size: 16
-  num_workers: 8
+  num_workers: 12
+  pin_memory: True
+  persistent_workers: True
+  prefetch_factor: 4
   collate_fn:
     stop_epoch: 150
 
@@ -96,12 +99,15 @@ val_dataloader:
   shuffle: False
   total_batch_size: 16
   num_workers: 8
+  pin_memory: True
+  persistent_workers: True
+  prefetch_factor: 4
 
 optimizer:
   type: AdamW
   params:
     - {params: '^(?=.*backbone)(?!.*norm|bn).*$', lr: 0.00004}
-    - {params: '^(?=.*(?:fusion_layers|glsa|illum_extract)).*$', lr: 0.0004}
+    - {params: '^(?=.*(?:fusion_layers|glsa|illum_extract|alignment|rgb_enhance|ir_enhance)).*$', lr: 0.0004}
     - {params: '^(?=.*(?:encoder|decoder))(?!.*(?:norm|bn|bias)).*$', lr: 0.0002}
   weight_decay: 0.0001
 
