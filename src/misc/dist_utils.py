@@ -170,6 +170,9 @@ def warp_loader(loader, shuffle=False):
             collate_fn=loader.collate_fn,
             pin_memory=loader.pin_memory,
             num_workers=loader.num_workers,
+            prefetch_factor=getattr(loader, "prefetch_factor", None),
+            persistent_workers=getattr(loader, "persistent_workers", False),
+            pin_memory_device=getattr(loader, "pin_memory_device", ""),
         )
     return loader
 
