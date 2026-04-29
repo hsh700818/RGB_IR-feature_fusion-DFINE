@@ -3,7 +3,12 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 from .utils import sigmoid_focal_loss
-from .box_ops import rbox_to_corners, rotated_iou, rbox_to_adr_target
+from .box_ops import (
+    rbox_to_corners,
+    rotated_iou,
+    differentiable_rotated_iou,
+    rbox_to_adr_target,
+)
 from ...core import register
 
 __all__ = ["DFINECriterion"]
@@ -57,7 +62,7 @@ class DFINECriterion(nn.Module):
         loss_bbox = F.l1_loss(src_corners, target_corners, reduction="none").sum() / num_boxes
 
         if self.weight_dict.get("loss_riou", 0.0) > 0:
-            iou_vector = rotated_iou(src_boxes, target_boxes, is_aligned=True)
+            iou_vector = differentiable_rotated_iou(src_boxes, target_boxes)
             loss_riou = (1 - iou_vector).sum() / num_boxes
         else:
             loss_riou = src_boxes.sum() * 0
@@ -76,6 +81,16 @@ class DFINECriterion(nn.Module):
         src_reg_logits = outputs["pred_reg_logits"][idx]
         target_boxes = torch.cat([t["boxes"][i] for t, (_, i) in zip(targets, indices)], dim=0)
         target_adr = rbox_to_adr_target(target_boxes, self.num_bins)
+
+        if src_reg_logits.shape[-1] != self.num_bins and src_reg_logits.ndim == 3:
+            if src_reg_logits.shape[1] == self.num_bins:
+                src_reg_logits = src_reg_logits.transpose(1, 2)
+            else:
+                raise ValueError(
+                    f"Unexpected pred_reg_logits shape {tuple(src_reg_logits.shape)} "
+                    f"for num_bins={self.num_bins}"
+                )
+
         loss_fgl = F.cross_entropy(
             src_reg_logits.flatten(0, 1), target_adr.flatten().long(), reduction="none"
         ).view(src_reg_logits.shape[:2])

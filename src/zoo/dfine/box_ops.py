@@ -57,114 +57,101 @@ def poly2rbox(polys):
     return torch.cat([cxcy, w.unsqueeze(-1), h.unsqueeze(-1), angle.unsqueeze(-1)], dim=-1).squeeze(0)
 
 
-def _rbox_to_enclosing_xyxy(rboxes: Tensor) -> Tensor:
-    corners = rbox_to_corners(rboxes)
-    xmin = corners[..., 0].min(dim=-1).values
-    ymin = corners[..., 1].min(dim=-1).values
-    xmax = corners[..., 0].max(dim=-1).values
-    ymax = corners[..., 1].max(dim=-1).values
-    return torch.stack([xmin, ymin, xmax, ymax], dim=-1)
+def _prepare_rboxes_for_mmcv(rboxes: Tensor) -> Tensor:
+    """Prepare valid [cx, cy, w, h, angle] boxes for mmcv rotated IoU.
 
-
-def _pairwise_box_iou(boxes1: Tensor, boxes2: Tensor) -> Tensor:
-    area1 = ((boxes1[:, 2] - boxes1[:, 0]).clamp(min=0) * (boxes1[:, 3] - boxes1[:, 1]).clamp(min=0))
-    area2 = ((boxes2[:, 2] - boxes2[:, 0]).clamp(min=0) * (boxes2[:, 3] - boxes2[:, 1]).clamp(min=0))
-    lt = torch.maximum(boxes1[:, None, :2], boxes2[None, :, :2])
-    rb = torch.minimum(boxes1[:, None, 2:], boxes2[None, :, 2:])
-    wh = (rb - lt).clamp(min=0)
-    inter = wh[..., 0] * wh[..., 1]
-    union = area1[:, None] + area2[None, :] - inter
-    return inter / union.clamp(min=1e-6)
-
-
-def _hbb_iou_fallback(boxes1, boxes2, is_aligned=False):
-    """Only used when loss_riou is disabled or for emergency debugging."""
-    hbb1 = _rbox_to_enclosing_xyxy(boxes1)
-    hbb2 = _rbox_to_enclosing_xyxy(boxes2)
-    if is_aligned:
-        lt = torch.maximum(hbb1[:, :2], hbb2[:, :2])
-        rb = torch.minimum(hbb1[:, 2:], hbb2[:, 2:])
-        wh = (rb - lt).clamp(min=0)
-        inter = wh[:, 0] * wh[:, 1]
-        area1 = (hbb1[:, 2] - hbb1[:, 0]).clamp(min=0) * (hbb1[:, 3] - hbb1[:, 1]).clamp(min=0)
-        area2 = (hbb2[:, 2] - hbb2[:, 0]).clamp(min=0) * (hbb2[:, 3] - hbb2[:, 1]).clamp(min=0)
-        union = area1 + area2 - inter
-        return inter / union.clamp(min=1e-6)
-    return _pairwise_box_iou(hbb1, hbb2)
-
-
-def _mmcv_box_iou_rotated(boxes1, boxes2, is_aligned=False):
-    from mmcv.ops import box_iou_rotated
-
-    boxes1 = boxes1.contiguous().float()
-    boxes2 = boxes2.contiguous().float()
-    out = box_iou_rotated(boxes1, boxes2, mode="iou", aligned=is_aligned, clockwise=False)
-    return out.to(dtype=boxes1.dtype)
-
-
-def _mmcv_diff_iou_rotated_aligned(boxes1, boxes2):
-    """Use MMCV differentiable rotated IoU when available.
-
-    MMCV versions expose this operator with slightly different names.  We try
-    the common names first.  The aligned loss only needs IoU for matched pairs.
+    mmcv rotated IoU kernels are sensitive to NaN/Inf and near-zero widths or
+    heights.  Sanitizing here prevents invalid values from entering the CUDA op.
     """
-    try:
-        from mmcv.ops import diff_iou_rotated_2d
-    except Exception:
-        try:
-            from mmcv.ops import diff_iou_rotated as diff_iou_rotated_2d
-        except Exception:
-            return None
-
-    boxes1_f = boxes1.contiguous().float()
-    boxes2_f = boxes2.contiguous().float()
-    out = diff_iou_rotated_2d(boxes1_f.unsqueeze(0), boxes2_f.unsqueeze(0))
-    out = out.squeeze(0)
-
-    if out.ndim == 2:
-        # Some versions return [N, N].  For aligned matched pairs use diagonal.
-        out = out.diag()
-    elif out.ndim > 1:
-        out = out.reshape(-1)
-    return out.to(dtype=boxes1.dtype)
+    rboxes = torch.nan_to_num(rboxes, nan=0.0, posinf=1.0, neginf=0.0)
+    xy = rboxes[..., :2].clamp(0.0, 1.0)
+    wh = rboxes[..., 2:4].clamp(min=1e-4, max=1.0)
+    angle = rboxes[..., 4:5].clamp(min=-math.pi / 2, max=math.pi / 2)
+    return torch.cat([xy, wh, angle], dim=-1).contiguous().float()
 
 
 def rotated_iou(boxes1, boxes2, is_aligned=False):
-    """True rotated IoU for OBB training.
+    """True rotated IoU using mmcv.ops.box_iou_rotated.
 
-    Priority:
-    1. For aligned matched pairs, use MMCV differentiable rotated IoU when the
-       installed mmcv provides diff_iou_rotated_2d / diff_iou_rotated.
-    2. Otherwise use MMCV box_iou_rotated, which computes true rotated IoU.
-
-    If mmcv is not installed, this function raises a clear error instead of
-    silently falling back to HBB IoU, because loss_riou should be a real OBB loss.
-    Temporarily set loss_riou: 0.0 if you need to train without mmcv.
+    Important: this intentionally avoids mmcv diff_iou_rotated during training.
+    In the current environment diff_iou_rotated can produce unstable gradients
+    and make decoder boxes become NaN after several epochs.  box_iou_rotated
+    still computes true polygon rotated IoU, but its output is treated as a
+    stable IoU target/metric term.  The main localization gradient continues to
+    come from the corner L1 loss.
     """
     if boxes1.numel() == 0 or boxes2.numel() == 0:
         if is_aligned:
             return boxes1.new_zeros((boxes1.shape[0],))
         return boxes1.new_zeros((boxes1.shape[0], boxes2.shape[0]))
 
-    if is_aligned:
-        diff_iou = _mmcv_diff_iou_rotated_aligned(boxes1, boxes2)
-        if diff_iou is not None:
-            return diff_iou.clamp(min=0.0, max=1.0)
-
     try:
-        return _mmcv_box_iou_rotated(boxes1, boxes2, is_aligned=is_aligned).clamp(min=0.0, max=1.0)
+        from mmcv.ops import box_iou_rotated
     except Exception as exc:
         raise ImportError(
-            "loss_riou 已启用，但当前环境没有可用的 mmcv 旋转 IoU 算子。"
-            "请安装与 PyTorch/CUDA 匹配的 mmcv，或临时把配置中的 loss_riou 改回 0.0。"
+            "loss_riou 已启用，但当前环境没有可用的 mmcv.ops.box_iou_rotated。"
+            "请检查 mmcv 是否安装了 CUDA ops，或临时把 loss_riou 改回 0.0。"
         ) from exc
+
+    b1 = _prepare_rboxes_for_mmcv(boxes1.detach())
+    b2 = _prepare_rboxes_for_mmcv(boxes2.detach())
+    with torch.no_grad():
+        out = box_iou_rotated(b1, b2, mode="iou", aligned=is_aligned, clockwise=False)
+        out = torch.nan_to_num(out, nan=0.0, posinf=0.0, neginf=0.0).clamp(0.0, 1.0)
+    return out.to(device=boxes1.device, dtype=boxes1.dtype)
+
+
+def differentiable_rotated_iou(boxes1: Tensor, boxes2: Tensor, eps: float = 1e-6) -> Tensor:
+    """Differentiable IoU-like similarity for aligned rotated boxes.
+
+    mmcv's `box_iou_rotated` is used for matching/eval but not suitable as a
+    stable training gradient source in this project setup. Here we build a
+    smooth surrogate from:
+    1) enclosing AABB IoU computed from rotated corners
+    2) angle consistency term cos(|delta angle|)
+    """
+    if boxes1.numel() == 0 or boxes2.numel() == 0:
+        return boxes1.new_zeros((boxes1.shape[0],))
+
+    c1 = rbox_to_corners(boxes1)
+    c2 = rbox_to_corners(boxes2)
+
+    x1_min = c1[..., 0].min(dim=-1).values
+    y1_min = c1[..., 1].min(dim=-1).values
+    x1_max = c1[..., 0].max(dim=-1).values
+    y1_max = c1[..., 1].max(dim=-1).values
+
+    x2_min = c2[..., 0].min(dim=-1).values
+    y2_min = c2[..., 1].min(dim=-1).values
+    x2_max = c2[..., 0].max(dim=-1).values
+    y2_max = c2[..., 1].max(dim=-1).values
+
+    inter_w = (torch.minimum(x1_max, x2_max) - torch.maximum(x1_min, x2_min)).clamp(min=0.0)
+    inter_h = (torch.minimum(y1_max, y2_max) - torch.maximum(y1_min, y2_min)).clamp(min=0.0)
+    inter = inter_w * inter_h
+
+    area1 = (x1_max - x1_min).clamp(min=0.0) * (y1_max - y1_min).clamp(min=0.0)
+    area2 = (x2_max - x2_min).clamp(min=0.0) * (y2_max - y2_min).clamp(min=0.0)
+    union = (area1 + area2 - inter).clamp(min=eps)
+    aabb_iou = inter / union
+
+    dtheta = boxes1[..., 4] - boxes2[..., 4]
+    dtheta = torch.atan2(torch.sin(dtheta), torch.cos(dtheta))
+    angle_sim = torch.cos(dtheta).clamp(min=0.0)
+
+    return (aabb_iou * angle_sim).clamp(0.0, 1.0)
 
 
 # --- ADR 角度分布精细化算子 ---
 
 def rbox_to_adr_target(target_boxes, num_bins):
-    device = target_boxes.device
-    return torch.randint(0, num_bins, (target_boxes.shape[0], 6), device=device)
+    if target_boxes.numel() == 0:
+        return target_boxes.new_zeros((0, 6), dtype=torch.long)
+
+    voffset = rbox_to_voffset(target_boxes)
+    voffset = torch.nan_to_num(voffset, nan=0.0, posinf=1.0, neginf=0.0).clamp(0.0, 1.0)
+    bins = torch.floor(voffset * float(num_bins)).long()
+    return bins.clamp(min=0, max=num_bins - 1)
 
 
 def rbox_to_voffset(rboxes):
