@@ -1,44 +1,33 @@
-#!/usr/bin/env bash
-set -euo pipefail
-
 # 1. 环境与显存优化设置
-# 避免 libgomp: Invalid value for environment variable OMP_NUM_THREADS
+# 解决 libgomp 报错
 export OMP_NUM_THREADS=1
-# 缓解 PyTorch 显存碎片化导致的 OOM
+# 解决显存碎片化导致的 OOM
 export PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
 
-# 2. 训练配置
+# 2. 路径设置 (请确保路径与你服务器一致)
 CONFIG="configs/dfine/dfine_hgnetv2_s_dronevehicle.yml"
-OUTPUT_DIR="./output/dronevehicle_s_obb_fusion_restart"
-TUNING_PATH="weights_1/dfine_s_coco.pth"
+OUTPUT_DIR="./output/dronevehicle_s_obb_fusion_v1"
+RESUME_PATH="./output/dronevehicle_s_obb_fusion_v1/last.pth"
 
-# 3. 启动前检查
-if [ ! -f "$CONFIG" ]; then
-    echo "配置文件不存在: $CONFIG"
-    exit 1
-fi
+UPDATES="checkpoint=weights_1/dfine_s_coco.pth"
 
-if [ ! -f "$TUNING_PATH" ]; then
-    echo "预训练权重不存在: $TUNING_PATH"
-    echo "请确认 dfine_s_coco.pth 是否已放到 weights_1/ 目录。"
-    exit 1
-fi
-
-mkdir -p "$OUTPUT_DIR"
-
-echo "==================== 开始 D-FINE RGB-IR OBB 重新训练 ===================="
 echo "配置文件: $CONFIG"
 echo "输出目录: $OUTPUT_DIR"
-echo "预训练权重: $TUNING_PATH"
-echo "说明: 本脚本使用 -t 加载 COCO 预训练权重重新训练，不使用 -r resume。"
 
-# 4. 执行训练
+# 4. 执行训练命令
+# --use-amp: 开启混合精度训练，节省显存并加速
+# -u: 覆盖配置文件中的设置
 python train.py \
-    -c "$CONFIG" \
-    -t "$TUNING_PATH" \
-    --output-dir "$OUTPUT_DIR" \
+    -c $CONFIG \
+    --output-dir $OUTPUT_DIR \
     --use-amp \
-    --seed 42
+    --seed 42 \
+    -u $UPDATES \
+    -r $RESUME_PATH
 
 # 5. 训练结束提醒
-echo "训练命令已正常结束。"
+if [ $? -eq 0 ]; then
+    echo "训练成功完成！"
+else
+    echo "训练意外中断，请检查日志。"
+fi

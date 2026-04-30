@@ -121,6 +121,17 @@ class CocoDetection(FasterCocoDetection, DetDataset):
             )
         )
 
+    @staticmethod
+    def _replace_dir_token(path, src_token, dst_token):
+        """
+        Replace directory token safely without touching unrelated substrings.
+        Example: /a/valimg/0001.jpg -> /a/valimgr/0001.jpg
+        """
+        norm = os.path.normpath(path)
+        parts = norm.split(os.sep)
+        replaced = [dst_token if p == src_token else p for p in parts]
+        return os.sep.join(replaced)
+
     def _resolve_ir_path(self, path_v):
         """Resolve paired infrared image paths for common DroneVehicle layouts."""
         directory = os.path.dirname(path_v)
@@ -129,15 +140,15 @@ class CocoDetection(FasterCocoDetection, DetDataset):
         parent = os.path.dirname(directory)
 
         candidates = [
-            path_v.replace('trainimg', 'trainimgr'),
-            path_v.replace('valimg', 'valimgr'),
-            path_v.replace('testimg', 'testimgr'),
+            self._replace_dir_token(path_v, 'trainimg', 'trainimgr'),
+            self._replace_dir_token(path_v, 'valimg', 'valimgr'),
+            self._replace_dir_token(path_v, 'testimg', 'testimgr'),
             path_v.replace('/img/', '/imgr/'),
             path_v.replace('\\img\\', '\\imgr\\'),
-            os.path.join(directory.replace('trainimg', 'trainimgr'), base),
-            os.path.join(directory.replace('valimg', 'valimgr'), base),
-            os.path.join(directory.replace('testimg', 'testimgr'), base),
-            os.path.join(directory.replace('img', 'imgr'), base),
+            os.path.join(self._replace_dir_token(directory, 'trainimg', 'trainimgr'), base),
+            os.path.join(self._replace_dir_token(directory, 'valimg', 'valimgr'), base),
+            os.path.join(self._replace_dir_token(directory, 'testimg', 'testimgr'), base),
+            os.path.join(self._replace_dir_token(directory, 'img', 'imgr'), base),
             os.path.join(parent, 'imgr', base),
             os.path.join(parent, 'trainimgr', base),
             os.path.join(parent, 'valimgr', base),
@@ -172,7 +183,11 @@ class CocoDetection(FasterCocoDetection, DetDataset):
                 seen.add(p)
                 unique_candidates.append(p)
 
+        src_abs = os.path.abspath(path_v)
         for p in unique_candidates:
+            # Never allow IR to fall back to the same file as visible image.
+            if os.path.abspath(p) == src_abs:
+                continue
             if os.path.exists(p):
                 return p
 

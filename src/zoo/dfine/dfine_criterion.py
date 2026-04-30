@@ -7,6 +7,8 @@ from .box_ops import (
     rbox_to_corners,
     rotated_iou,
     differentiable_rotated_iou,
+    gwd_loss,
+    kld_loss,
     rbox_to_adr_target,
 )
 from ...core import register
@@ -26,6 +28,8 @@ class DFINECriterion(nn.Module):
         weight_dict=None,
         losses=None,
         num_bins=16,
+        riou_mode="gwd",
+        class_weights=None,
         **kwargs,
     ):
         super().__init__()
@@ -34,6 +38,17 @@ class DFINECriterion(nn.Module):
         self.weight_dict = weight_dict if weight_dict is not None else {}
         self.losses = losses if losses is not None else ["labels", "rboxes"]
         self.num_bins = num_bins
+        # riou_mode: "gwd" | "kld" | "aabb" (legacy AABB×cos surrogate)
+        assert riou_mode in ("gwd", "kld", "aabb"), f"Unknown riou_mode: {riou_mode}"
+        self.riou_mode = riou_mode
+        # class_weights: per-class multiplier on the focal loss, shape [num_classes].
+        # None = uniform (standard focal loss behaviour).
+        if class_weights is not None:
+            w = torch.tensor(class_weights, dtype=torch.float32)
+            w = w / w.mean()  # normalise so average weight stays 1
+            self.register_buffer("class_weights", w)
+        else:
+            self.class_weights = None
 
     def loss_labels(self, outputs, targets, indices, num_boxes):
         src_logits = outputs["pred_logits"]
@@ -45,7 +60,10 @@ class DFINECriterion(nn.Module):
         target_classes[idx] = target_classes_o
         target_onehot = F.one_hot(target_classes, num_classes=self.num_classes + 1)[..., :-1]
         target_onehot = target_onehot.to(dtype=src_logits.dtype)
-        loss_ce = sigmoid_focal_loss(src_logits, target_onehot, num_boxes=num_boxes)
+        loss_ce = sigmoid_focal_loss(
+            src_logits, target_onehot, num_boxes=num_boxes,
+            class_weights=self.class_weights,
+        )
         return {"loss_vfl": loss_ce * self.weight_dict.get("loss_vfl", 1.0)}
 
     def loss_rboxes(self, outputs, targets, indices, num_boxes):
@@ -62,14 +80,19 @@ class DFINECriterion(nn.Module):
         loss_bbox = F.l1_loss(src_corners, target_corners, reduction="none").sum() / num_boxes
 
         if self.weight_dict.get("loss_riou", 0.0) > 0:
-            iou_vector = differentiable_rotated_iou(src_boxes, target_boxes)
-            loss_riou = (1 - iou_vector).sum() / num_boxes
+            if self.riou_mode == "gwd":
+                sim = gwd_loss(src_boxes, target_boxes)
+            elif self.riou_mode == "kld":
+                sim = kld_loss(src_boxes, target_boxes)
+            else:
+                sim = differentiable_rotated_iou(src_boxes, target_boxes)
+            loss_riou = (1.0 - sim).sum() / num_boxes
         else:
             loss_riou = src_boxes.sum() * 0
 
         return {
             "loss_bbox": loss_bbox * self.weight_dict.get("loss_bbox", 5.0),
-            "loss_riou": loss_riou * self.weight_dict.get("loss_riou", 0.0),
+            "loss_riou": loss_riou * self.weight_dict.get("loss_riou", 2.0),
         }
 
     def loss_fgl(self, outputs, targets, indices, num_boxes):

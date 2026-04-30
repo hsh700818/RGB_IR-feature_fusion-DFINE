@@ -58,11 +58,7 @@ def poly2rbox(polys):
 
 
 def _prepare_rboxes_for_mmcv(rboxes: Tensor) -> Tensor:
-    """Prepare valid [cx, cy, w, h, angle] boxes for mmcv rotated IoU.
-
-    mmcv rotated IoU kernels are sensitive to NaN/Inf and near-zero widths or
-    heights.  Sanitizing here prevents invalid values from entering the CUDA op.
-    """
+    """Sanitize [cx, cy, w, h, angle] boxes for mmcv rotated IoU (eval only)."""
     rboxes = torch.nan_to_num(rboxes, nan=0.0, posinf=1.0, neginf=0.0)
     xy = rboxes[..., :2].clamp(0.0, 1.0)
     wh = rboxes[..., 2:4].clamp(min=1e-4, max=1.0)
@@ -71,14 +67,11 @@ def _prepare_rboxes_for_mmcv(rboxes: Tensor) -> Tensor:
 
 
 def rotated_iou(boxes1, boxes2, is_aligned=False):
-    """True rotated IoU using mmcv.ops.box_iou_rotated.
+    """True rotated IoU via mmcv — used for matching and eval metrics only.
 
-    Important: this intentionally avoids mmcv diff_iou_rotated during training.
-    In the current environment diff_iou_rotated can produce unstable gradients
-    and make decoder boxes become NaN after several epochs.  box_iou_rotated
-    still computes true polygon rotated IoU, but its output is treated as a
-    stable IoU target/metric term.  The main localization gradient continues to
-    come from the corner L1 loss.
+    Kept no-grad because mmcv's CUDA kernel is not a stable gradient source
+    in this setup (NaN risk after several epochs).  Training gradients come
+    from gwd_loss / kld_loss instead.
     """
     if boxes1.numel() == 0 or boxes2.numel() == 0:
         if is_aligned:
@@ -89,8 +82,8 @@ def rotated_iou(boxes1, boxes2, is_aligned=False):
         from mmcv.ops import box_iou_rotated
     except Exception as exc:
         raise ImportError(
-            "loss_riou 已启用，但当前环境没有可用的 mmcv.ops.box_iou_rotated。"
-            "请检查 mmcv 是否安装了 CUDA ops，或临时把 loss_riou 改回 0.0。"
+            "rotated_iou (eval) 需要 mmcv CUDA ops。"
+            "请安装带 CUDA ops 的 mmcv，或将 eval_obb 设为 False。"
         ) from exc
 
     b1 = _prepare_rboxes_for_mmcv(boxes1.detach())
@@ -101,14 +94,179 @@ def rotated_iou(boxes1, boxes2, is_aligned=False):
     return out.to(device=boxes1.device, dtype=boxes1.dtype)
 
 
-def differentiable_rotated_iou(boxes1: Tensor, boxes2: Tensor, eps: float = 1e-6) -> Tensor:
-    """Differentiable IoU-like similarity for aligned rotated boxes.
+# ---------------------------------------------------------------------------
+# Differentiable rotated-box losses (GWD / KLD)
+# ---------------------------------------------------------------------------
 
-    mmcv's `box_iou_rotated` is used for matching/eval but not suitable as a
-    stable training gradient source in this project setup. Here we build a
-    smooth surrogate from:
-    1) enclosing AABB IoU computed from rotated corners
-    2) angle consistency term cos(|delta angle|)
+def _rbox_to_gaussian(rboxes: Tensor, eps: float = 1e-7):
+    """Convert [cx, cy, w, h, angle] to (mu, Sigma) of a 2-D Gaussian.
+
+    Each rotated box is modelled as a 2-D Gaussian whose covariance encodes
+    the box shape and orientation.  This is the standard GWD/KLD formulation
+    (Yang et al., CVPR 2021 / NeurIPS 2021).
+
+    Returns:
+        mu:    [..., 2]   — centre coordinates
+        sigma: [..., 2, 2] — 2×2 covariance matrix (full, symmetric, PSD)
+    """
+    cx, cy, w, h, angle = rboxes.unbind(-1)
+    w = w.clamp(min=eps)
+    h = h.clamp(min=eps)
+
+    cos_a = torch.cos(angle)
+    sin_a = torch.sin(angle)
+
+    # half-axes squared
+    a = (w / 2.0) ** 2
+    b = (h / 2.0) ** 2
+
+    # Sigma = R * diag(a, b) * R^T
+    sigma_xx = a * cos_a ** 2 + b * sin_a ** 2
+    sigma_yy = a * sin_a ** 2 + b * cos_a ** 2
+    sigma_xy = (a - b) * cos_a * sin_a
+
+    mu = torch.stack([cx, cy], dim=-1)
+    sigma = torch.stack(
+        [sigma_xx, sigma_xy, sigma_xy, sigma_yy], dim=-1
+    ).view(*rboxes.shape[:-1], 2, 2)
+    return mu, sigma
+
+
+def gwd_loss(boxes1: Tensor, boxes2: Tensor, eps: float = 1e-7, tau: float = 1.0) -> Tensor:
+    """Gaussian Wasserstein Distance loss for aligned rotated boxes.
+
+    Fully differentiable — no external CUDA ops, no no_grad wrapper.
+    Implements W2^2(G1, G2) = ||mu1 - mu2||^2 + Bures(Sigma1, Sigma2).
+
+    The Bures metric between PSD matrices A and B is:
+        tr(A) + tr(B) - 2 * tr((A^{1/2} B A^{1/2})^{1/2})
+
+    For 2×2 matrices the matrix square root has a closed form, making this
+    numerically stable and cheap.
+
+    Args:
+        boxes1, boxes2: [..., 5] tensors of (cx, cy, w, h, angle) boxes.
+        tau: temperature for the normalised similarity score (default 1.0).
+
+    Returns:
+        similarity: [...] tensor in [0, 1], higher = more similar.
+    """
+    if boxes1.numel() == 0 or boxes2.numel() == 0:
+        return boxes1.new_zeros(boxes1.shape[:-1])
+
+    mu1, s1 = _rbox_to_gaussian(boxes1, eps)
+    mu2, s2 = _rbox_to_gaussian(boxes2, eps)
+
+    # Centre distance term
+    d_mu = ((mu1 - mu2) ** 2).sum(dim=-1)
+
+    # Bures metric: tr(S1) + tr(S2) - 2*tr((S1^{1/2} S2 S1^{1/2})^{1/2})
+    # For 2×2 PSD matrix M, tr(M^{1/2}) = sqrt(tr(M) + 2*sqrt(det(M)))
+    # We need tr((S1^{1/2} S2 S1^{1/2})^{1/2}).
+    # Closed-form: let P = S1^{1/2} S2 S1^{1/2}.
+    # tr(P^{1/2}) = sqrt(tr(P) + 2*sqrt(det(P)))
+
+    tr_s1 = s1[..., 0, 0] + s1[..., 1, 1]
+    tr_s2 = s2[..., 0, 0] + s2[..., 1, 1]
+
+    det_s1 = (s1[..., 0, 0] * s1[..., 1, 1] - s1[..., 0, 1] ** 2).clamp(min=eps)
+    det_s2 = (s2[..., 0, 0] * s2[..., 1, 1] - s2[..., 0, 1] ** 2).clamp(min=eps)
+
+    # S1^{1/2} closed form for 2×2 PSD:
+    #   M^{1/2} = (M + sqrt(det(M)) * I) / tr(M^{1/2})
+    # where tr(M^{1/2}) = sqrt(tr(M) + 2*sqrt(det(M)))
+    sqrt_det_s1 = det_s1.clamp(min=0.0).sqrt()
+    tau_s1 = (tr_s1 + 2.0 * sqrt_det_s1).clamp(min=eps).sqrt()  # tr(S1^{1/2})
+
+    s1_sqrt_xx = (s1[..., 0, 0] + sqrt_det_s1) / tau_s1
+    s1_sqrt_yy = (s1[..., 1, 1] + sqrt_det_s1) / tau_s1
+    s1_sqrt_xy = s1[..., 0, 1] / tau_s1
+
+    # P = S1^{1/2} @ S2 @ S1^{1/2}  (2×2 symmetric product)
+    # Row 0 of S1^{1/2} @ S2:
+    r00 = s1_sqrt_xx * s2[..., 0, 0] + s1_sqrt_xy * s2[..., 1, 0]
+    r01 = s1_sqrt_xx * s2[..., 0, 1] + s1_sqrt_xy * s2[..., 1, 1]
+    # Row 1 of S1^{1/2} @ S2:
+    r10 = s1_sqrt_xy * s2[..., 0, 0] + s1_sqrt_yy * s2[..., 1, 0]
+    r11 = s1_sqrt_xy * s2[..., 0, 1] + s1_sqrt_yy * s2[..., 1, 1]
+
+    # P = (S1^{1/2} @ S2) @ S1^{1/2}
+    p00 = r00 * s1_sqrt_xx + r01 * s1_sqrt_xy
+    p11 = r10 * s1_sqrt_xy + r11 * s1_sqrt_yy
+    p01 = r00 * s1_sqrt_xy + r01 * s1_sqrt_yy
+
+    tr_p = p00 + p11
+    det_p = (p00 * p11 - p01 ** 2).clamp(min=0.0)
+    tr_p_sqrt = (tr_p + 2.0 * det_p.sqrt()).clamp(min=0.0).sqrt()
+
+    bures = (tr_s1 + tr_s2 - 2.0 * tr_p_sqrt).clamp(min=0.0)
+    w2_sq = d_mu + bures
+
+    # Convert distance to similarity in [0, 1]
+    similarity = 1.0 / (w2_sq / tau + 1.0)
+    return similarity.clamp(0.0, 1.0)
+
+
+def kld_loss(boxes1: Tensor, boxes2: Tensor, eps: float = 1e-7) -> Tensor:
+    """KL-Divergence loss between Gaussian representations of rotated boxes.
+
+    KLD(G1 || G2) + KLD(G2 || G1) (symmetrised).  Fully differentiable.
+    Converted to a similarity score in [0, 1] via 1/(1 + KLD).
+
+    Args:
+        boxes1, boxes2: [..., 5] tensors of (cx, cy, w, h, angle) boxes.
+
+    Returns:
+        similarity: [...] tensor in [0, 1].
+    """
+    if boxes1.numel() == 0 or boxes2.numel() == 0:
+        return boxes1.new_zeros(boxes1.shape[:-1])
+
+    mu1, s1 = _rbox_to_gaussian(boxes1, eps)
+    mu2, s2 = _rbox_to_gaussian(boxes2, eps)
+
+    def _kld_single(mu_p, s_p, mu_q, s_q):
+        # KLD(p||q) for 2-D Gaussians
+        # = 0.5 * [tr(S_q^{-1} S_p) + (mu_q-mu_p)^T S_q^{-1} (mu_q-mu_p) - 2 + ln(det(S_q)/det(S_p))]
+        det_p = (s_p[..., 0, 0] * s_p[..., 1, 1] - s_p[..., 0, 1] ** 2).clamp(min=eps)
+        det_q = (s_q[..., 0, 0] * s_q[..., 1, 1] - s_q[..., 0, 1] ** 2).clamp(min=eps)
+
+        # S_q^{-1} (2×2 analytic inverse)
+        inv_q_xx = s_q[..., 1, 1] / det_q
+        inv_q_yy = s_q[..., 0, 0] / det_q
+        inv_q_xy = -s_q[..., 0, 1] / det_q
+
+        # tr(S_q^{-1} S_p)
+        tr_term = (
+            inv_q_xx * s_p[..., 0, 0]
+            + 2.0 * inv_q_xy * s_p[..., 0, 1]
+            + inv_q_yy * s_p[..., 1, 1]
+        )
+
+        # (mu_q - mu_p)^T S_q^{-1} (mu_q - mu_p)
+        d = mu_q - mu_p
+        maha = (
+            inv_q_xx * d[..., 0] ** 2
+            + 2.0 * inv_q_xy * d[..., 0] * d[..., 1]
+            + inv_q_yy * d[..., 1] ** 2
+        )
+
+        log_ratio = (det_q / det_p).clamp(min=eps).log()
+        return 0.5 * (tr_term + maha - 2.0 + log_ratio)
+
+    kld_12 = _kld_single(mu1, s1, mu2, s2).clamp(min=0.0)
+    kld_21 = _kld_single(mu2, s2, mu1, s1).clamp(min=0.0)
+    sym_kld = (kld_12 + kld_21) * 0.5
+
+    similarity = 1.0 / (sym_kld + 1.0)
+    return similarity.clamp(0.0, 1.0)
+
+
+def differentiable_rotated_iou(boxes1: Tensor, boxes2: Tensor, eps: float = 1e-6) -> Tensor:
+    """Legacy AABB-IoU × angle-cosine surrogate — kept for backward compat.
+
+    Prefer gwd_loss() or kld_loss() for training; this is retained so that
+    configs with loss_riou still work without changes.
     """
     if boxes1.numel() == 0 or boxes2.numel() == 0:
         return boxes1.new_zeros((boxes1.shape[0],))

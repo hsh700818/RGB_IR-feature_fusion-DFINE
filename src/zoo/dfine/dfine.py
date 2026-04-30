@@ -155,18 +155,62 @@ class CrossModalInteraction(nn.Module):
         return f_main + self.gamma * out
 
 
+class ScaleGate(nn.Module):
+    """Per-scale learned RGB/IR contribution gate (DFS-lite).
+
+    Produces two spatial weight maps w_rgb and w_ir from the concatenated
+    RGB+IR features.  The maps are constrained to sum to 1 via softmax so the
+    total feature energy is preserved.
+
+    ir_bias shifts the initial gate toward IR (positive = favour IR at init).
+    P3 (small targets, thermal contrast) benefits from ir_bias > 0; P5
+    (large context, texture) benefits from ir_bias < 0 (favour RGB).
+    """
+
+    def __init__(self, ch, ir_bias: float = 0.0):
+        super().__init__()
+        hidden = max(ch // 8, 16)
+        self.gate = nn.Sequential(
+            nn.AdaptiveAvgPool2d(1),
+            nn.Conv2d(ch * 2, hidden, 1),
+            nn.ReLU(inplace=True),
+            nn.Conv2d(hidden, 2, 1),  # 2 logits: [w_rgb, w_ir]
+        )
+        # Bias the last conv so w_ir starts higher when ir_bias > 0
+        nn.init.zeros_(self.gate[-1].weight)
+        nn.init.constant_(self.gate[-1].bias, 0.0)
+        with torch.no_grad():
+            self.gate[-1].bias[0] -= ir_bias  # rgb logit
+            self.gate[-1].bias[1] += ir_bias  # ir  logit
+
+    def forward(self, f_rgb, f_ir):
+        logits = self.gate(torch.cat([f_rgb, f_ir], dim=1))  # [B, 2, 1, 1]
+        weights = torch.softmax(logits, dim=1)               # sums to 1
+        w_rgb = weights[:, 0:1]
+        w_ir  = weights[:, 1:2]
+        return w_rgb, w_ir
+
+
 class AdvancedMultimodalFusion(nn.Module):
     """
-    AAF + optional memory-safe CMI + illumination-aware fusion.
+    AAF + optional CMI + scale-aware DFS-lite gate + optional GLSA.
 
-    P3 carries small target details and is the largest feature map, so CMI can
-    be disabled on that level to reduce runtime while keeping lightweight
-    alignment and illumination-aware fusion.
+    Ablation flags (all default True to reproduce the full model):
+      use_cmi   — CrossModalInteraction on this level
+      use_illum — kept for backward compat; when True the illumination scalar
+                  is multiplied on top of the DFS-lite gate (additive signal)
+      use_glsa  — Global-Local Spatial Attention on the fused feature
+
+    ir_bias: initial bias toward IR in the scale gate.  Positive = favour IR.
+    Caller sets this per FPN level (P3 → +1.0, P4 → 0.0, P5 → -1.0).
     """
 
-    def __init__(self, ch, use_cmi=True, max_tokens=196):
+    def __init__(self, ch, use_cmi=True, max_tokens=196, use_illum=True, use_glsa=True,
+                 ir_bias: float = 0.0):
         super().__init__()
         self.use_cmi = bool(use_cmi)
+        self.use_illum = bool(use_illum)
+        self.use_glsa = bool(use_glsa)
         self.alignment = AlignmentAwareFusion(ch)
 
         if self.use_cmi:
@@ -176,16 +220,27 @@ class AdvancedMultimodalFusion(nn.Module):
             self.rgb_enhance = nn.Identity()
             self.ir_enhance = nn.Identity()
 
-        hidden_ch = max(ch // 4, 16)
-        self.illum_extract = nn.Sequential(
-            nn.AdaptiveAvgPool2d(1),
-            nn.Conv2d(ch, hidden_ch, 1),
-            nn.ReLU(inplace=True),
-            nn.Conv2d(hidden_ch, 1, 1),
-            nn.Sigmoid(),
-        )
+        # DFS-lite: per-scale learned gate (always present)
+        self.scale_gate = ScaleGate(ch, ir_bias=ir_bias)
+
+        if self.use_illum:
+            hidden_ch = max(ch // 4, 16)
+            self.illum_extract = nn.Sequential(
+                nn.AdaptiveAvgPool2d(1),
+                nn.Conv2d(ch, hidden_ch, 1),
+                nn.ReLU(inplace=True),
+                nn.Conv2d(hidden_ch, 1, 1),
+                nn.Sigmoid(),
+            )
+        else:
+            self.illum_extract = None
+
         self.fusion_conv = nn.Conv2d(ch * 2, ch, 1)
-        self.glsa = GLSA(ch)
+
+        if self.use_glsa:
+            self.glsa = GLSA(ch)
+        else:
+            self.glsa = nn.Identity()
 
     def forward(self, f_rgb, f_ir):
         f_ir_aligned = self.alignment(f_rgb, f_ir)
@@ -197,13 +252,17 @@ class AdvancedMultimodalFusion(nn.Module):
             f_rgb_ext = f_rgb
             f_ir_ext = f_ir_aligned
 
-        illum_score = self.illum_extract(f_rgb)
-        f_cat = torch.cat(
-            [f_rgb_ext * illum_score, f_ir_ext * (2.0 - illum_score)],
-            dim=1,
-        )
-        f_fused = self.fusion_conv(f_cat)
+        # DFS-lite scale gate: per-level learned RGB/IR weights
+        w_rgb, w_ir = self.scale_gate(f_rgb_ext, f_ir_ext)
 
+        if self.use_illum and self.illum_extract is not None:
+            # Illumination scalar modulates the IR weight further
+            illum_score = self.illum_extract(f_rgb)  # bright→RGB, dark→IR
+            w_ir = w_ir * (2.0 - illum_score)
+            w_rgb = w_rgb * illum_score
+
+        f_cat = torch.cat([f_rgb_ext * w_rgb, f_ir_ext * w_ir], dim=1)
+        f_fused = self.fusion_conv(f_cat)
         return self.glsa(f_fused)
 
 
@@ -214,7 +273,15 @@ IlluminationAwareFusion = AdvancedMultimodalFusion
 class DFINE(nn.Module):
     __inject__ = ["backbone", "encoder", "decoder"]
 
-    def __init__(self, backbone: nn.Module, encoder: nn.Module, decoder: nn.Module):
+    def __init__(
+        self,
+        backbone: nn.Module,
+        encoder: nn.Module,
+        decoder: nn.Module,
+        fusion_use_cmi: bool = True,
+        fusion_use_illum: bool = True,
+        fusion_use_glsa: bool = True,
+    ):
         super().__init__()
         self.backbone = backbone
         self.backbone_ir = copy.deepcopy(backbone)
@@ -223,12 +290,22 @@ class DFINE(nn.Module):
 
         in_channels = encoder.in_channels
         self.fusion_layers = nn.ModuleList()
-        for level_idx, ch in enumerate(in_channels):
-            # P3 is the largest feature level. Keep it light for speed while
-            # still preserving small-object details through P3 itself.
-            use_cmi = level_idx > 0
+        # ir_bias per FPN level: P3 (small targets, thermal) → +1.0,
+        # P4 (medium) → 0.0, P5 (large context, texture) → -1.0
+        num_levels = len(in_channels)
+        ir_biases = [1.0 - 2.0 * i / max(num_levels - 1, 1) for i in range(num_levels)]
+        for level_idx, (ch, ir_bias) in enumerate(zip(in_channels, ir_biases)):
+            # P3 (level 0) is the largest map — skip CMI there for speed.
+            use_cmi_level = fusion_use_cmi and (level_idx > 0)
             self.fusion_layers.append(
-                AdvancedMultimodalFusion(ch, use_cmi=use_cmi, max_tokens=196)
+                AdvancedMultimodalFusion(
+                    ch,
+                    use_cmi=use_cmi_level,
+                    max_tokens=196,
+                    use_illum=fusion_use_illum,
+                    use_glsa=fusion_use_glsa,
+                    ir_bias=ir_bias,
+                )
             )
 
     def forward(self, x, targets=None):

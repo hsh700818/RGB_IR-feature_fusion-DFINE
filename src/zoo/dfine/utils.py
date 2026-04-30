@@ -28,7 +28,8 @@ def get_activation(act: str, inplace: bool = True):
 
 # ==================== 2. 损失函数工具 ====================
 
-def sigmoid_focal_loss(inputs, targets, num_boxes, alpha: float = 0.25, gamma: float = 2.0):
+def sigmoid_focal_loss(inputs, targets, num_boxes, alpha: float = 0.25, gamma: float = 2.0,
+                       class_weights=None):
     """
     DETR 类模型常用的 Focal Loss 算子。
 
@@ -36,9 +37,9 @@ def sigmoid_focal_loss(inputs, targets, num_boxes, alpha: float = 0.25, gamma: f
     - [N, C]
     - [B, Q, C]
 
-    之前代码使用 loss.mean(1)，当输入为 [B, Q, C] 时会错误地在 query 维度 Q 上求均值，
-    导致分类损失被约 300 个 query 稀释，loss_vfl 异常偏小。正确做法是在类别维度 C 上
-    求均值，也就是 mean(-1)，然后对 batch 和 query 求和并按正样本数归一化。
+    class_weights: optional [C] tensor of per-class multipliers.  Applied after
+    the focal modulation so it only re-weights the class dimension without
+    disturbing the easy/hard sample balance.
     """
     prob = inputs.sigmoid()
     ce_loss = F.binary_cross_entropy_with_logits(inputs, targets, reduction="none")
@@ -48,6 +49,10 @@ def sigmoid_focal_loss(inputs, targets, num_boxes, alpha: float = 0.25, gamma: f
     if alpha >= 0:
         alpha_t = alpha * targets + (1 - alpha) * (1 - targets)
         loss = alpha_t * loss
+
+    if class_weights is not None:
+        # class_weights: [C] — broadcast over batch/query dims
+        loss = loss * class_weights.to(loss.device)
 
     if loss.ndim < 2:
         return loss.sum() / num_boxes

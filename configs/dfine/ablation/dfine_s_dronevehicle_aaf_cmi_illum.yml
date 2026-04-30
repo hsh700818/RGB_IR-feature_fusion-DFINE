@@ -1,16 +1,17 @@
 __include__: [
-  '../dataset/coco_detection.yml',
-  '../runtime.yml',
-  './include/dataloader.yml',
-  './include/optimizer.yml',
-  './include/dfine_hgnetv2.yml',
+  '../../dataset/coco_detection.yml',
+  '../../runtime.yml',
+  '../include/dataloader.yml',
+  '../include/optimizer.yml',
+  '../include/dfine_hgnetv2.yml',
 ]
+
+# Ablation C: AAF + CMI + illumination weighting.  No GLSA.
 
 epochs: 160
 warmup_epochs: 10
 use_amp: True
 seed: 42
-# 每 5 轮验证一次，避免每轮训练后都长时间卡在验证阶段。
 eval_freq: 5
 skip_initial_eval: True
 eval_hbb: False
@@ -21,12 +22,14 @@ eval_obb_score_thr: 0.001
 
 num_classes: 5
 remap_mscoco_category: True
-output_dir: ./output/dfine_s_dronevehicle_obb_fusion
-eval_spatial_size: [800, 800]
+output_dir: ./output/ablation_aaf_cmi_illum
 
 DFINE:
   backbone: HGNetv2
   decoder: DFINETransformer
+  fusion_use_cmi: True
+  fusion_use_illum: True
+  fusion_use_glsa: False
 
 HGNetv2:
   name: 'B0'
@@ -72,10 +75,6 @@ DFINECriterion:
     loss_fgl: 0.0
   losses: ['labels', 'rboxes']
   num_bins: 16
-  # Inverse-sqrt frequency weights for DroneVehicle class imbalance.
-  # Order: car, truck, bus, freight car, van  (matches category_id 1-5).
-  # Raw inv-sqrt: 1.08, 4.52, 5.13, 5.77, 6.09 → normalised by mean (4.52).
-  class_weights: [0.24, 1.00, 1.14, 1.28, 1.35]
 
 train_dataloader:
   dataset:
@@ -85,31 +84,24 @@ train_dataloader:
     transforms:
       ops:
         - {type: RandomHorizontalFlip}
-        - {type: Resize, size: [800, 800]}
+        - {type: Resize, size: [640, 640]}
         - {type: Normalize, mean: [0.485, 0.456, 0.406, 0.485, 0.456, 0.406], std: [0.229, 0.224, 0.225, 0.229, 0.224, 0.225]}
         - {type: ConvertBoxes, fmt: cxcywh, normalize: True}
   shuffle: True
-  total_batch_size: 12
+  total_batch_size: 16
   num_workers: 12
   pin_memory: True
   persistent_workers: True
   prefetch_factor: 4
   collate_fn:
-    base_size: 800
-    base_size_repeat: 3
     stop_epoch: 150
 
 val_dataloader:
   dataset:
     img_folder: /root/autodl-tmp/DroneVehicle/val/valimg
     ann_file: /root/autodl-tmp/DroneVehicle/instances_val.json
-    transforms:
-      ops:
-        - {type: Resize, size: [800, 800]}
-        - {type: Normalize, mean: [0.485, 0.456, 0.406, 0.485, 0.456, 0.406], std: [0.229, 0.224, 0.225, 0.229, 0.224, 0.225]}
-        - {type: ConvertBoxes, fmt: cxcywh, normalize: True}
   shuffle: False
-  total_batch_size: 8
+  total_batch_size: 16
   num_workers: 8
   pin_memory: True
   persistent_workers: True
@@ -119,7 +111,7 @@ optimizer:
   type: AdamW
   params:
     - {params: '^(?=.*backbone)(?!.*norm|bn).*$', lr: 0.00004}
-    - {params: '^(?=.*(?:fusion_layers|glsa|illum_extract|alignment|rgb_enhance|ir_enhance|scale_gate)).*$', lr: 0.0004}
+    - {params: '^(?=.*(?:fusion_layers|illum_extract|alignment|rgb_enhance|ir_enhance)).*$', lr: 0.0004}
     - {params: '^(?=.*(?:encoder|decoder))(?!.*(?:norm|bn|bias)).*$', lr: 0.0002}
   weight_decay: 0.0001
 
