@@ -77,9 +77,9 @@ DFINECriterion:
   losses: ['labels', 'rboxes']
   num_bins: 16
   # Inverse-sqrt frequency weights for DroneVehicle class imbalance.
-  # Order: car, truck, bus, freight car, van  (matches category_id 1-5).
+  # Order: car, truck, bus, van, freight car (matches category_id 1-5).
   # Raw inv-sqrt: 1.08, 4.52, 5.13, 5.77, 6.09 → normalised by mean (4.52).
-  class_weights: [0.24, 1.00, 1.14, 1.28, 1.35]
+  class_weights: [0.24, 1.00, 1.14, 1.35, 1.28]
 
 train_dataloader:
   dataset:

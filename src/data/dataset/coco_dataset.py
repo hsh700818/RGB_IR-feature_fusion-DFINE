@@ -45,7 +45,7 @@ class CocoDetection(FasterCocoDetection, DetDataset):
         return img, target
 
     def _filter_missing_rgb_ir_pairs(self):
-        """Drop COCO image ids that do not have both visible and infrared files."""
+        """Drop image ids that do not have both visible and infrared files."""
         kept_ids = []
         missing = []
         for image_id in list(self.ids):
@@ -116,7 +116,7 @@ class CocoDetection(FasterCocoDetection, DetDataset):
                 return p
 
         raise FileNotFoundError(
-            "未找到可见光图像，COCO file_name='{}'。已尝试路径：\n{}".format(
+            "未找到可见光图像，file_name='{}'。已尝试路径：\n{}".format(
                 file_name, "\n".join(unique_candidates[:30])
             )
         )
@@ -262,7 +262,7 @@ class ConvertCocoPolysToMask(object):
         else:
             boxes = torch.zeros((0, 5), dtype=torch.float32)
 
-        # 【核心修正】：严格映射标签 ID，防止 1-5 越界
+        
         category2label = kwargs.get("category2label", mscoco_category2label)
         labels = []
         for obj in anno:

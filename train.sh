@@ -10,7 +10,7 @@ export PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
 CONFIG="configs/dfine/dfine_hgnetv2_s_dronevehicle.yml"
 OUTPUT_DIR="./output/dronevehicle_s_obb_fusion_v3"
 TUNING_PATH="weights_1/dfine_s_coco.pth"
-# RESUME_PATH="./output/dronevehicle_s_obb_fusion_restart/checkpoint0011.pth"
+RESUME_PATH="./output/dronevehicle_s_obb_fusion_restart/checkpoint0011.pth"
 UPDATE_PARA="train_dataloader.total_batch_size=18 val_dataloader.total_batch_size=18"
 
 # 3. 启动前检查
@@ -25,11 +25,11 @@ if [ ! -f "$TUNING_PATH" ]; then
     exit 1
 fi
 
-# if [ ! -f "$RESUME_PATH" ]; then
-#     echo "断点权重不存在: $RESUME_PATH"
-#     echo "若不是断点续训，可忽略该提示。-r"
-#     exit 1
-# fi
+if [ ! -f "$RESUME_PATH" ]; then
+    echo "断点权重不存在: $RESUME_PATH"
+    echo "若不是断点续训，可忽略该提示。-r"
+    exit 1
+fi
 
 mkdir -p "$OUTPUT_DIR"
 
@@ -46,7 +46,7 @@ python train.py \
     --output-dir "$OUTPUT_DIR" \
     --use-amp \
     --seed 42 \
-    # -r "$RESUME_PATH" \
+    -r "$RESUME_PATH" \
     -u $UPDATE_PARA
 
 # 5. 训练结束提醒
