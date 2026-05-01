@@ -18,11 +18,15 @@ eval_obb: True
 primary_metric: obb_mAP50
 eval_obb_max_dets: 100
 eval_obb_score_thr: 0.001
+# 保留 160 轮作为训练上限，80 轮后若连续 8 次验证无明显提升则提前停止。
+early_stop_start_epoch: 80
+early_stop_patience: 8
+early_stop_min_delta: 0.001
 
 num_classes: 5
 remap_mscoco_category: True
 output_dir: ./output/dfine_s_dronevehicle_obb_fusion
-eval_spatial_size: [800, 800]
+eval_spatial_size: [640, 640]
 
 DFINE:
   backbone: HGNetv2
@@ -85,7 +89,7 @@ train_dataloader:
     transforms:
       ops:
         - {type: RandomHorizontalFlip}
-        - {type: Resize, size: [800, 800]}
+        - {type: Resize, size: [640, 640]}
         - {type: Normalize, mean: [0.485, 0.456, 0.406, 0.485, 0.456, 0.406], std: [0.229, 0.224, 0.225, 0.229, 0.224, 0.225]}
         - {type: ConvertBoxes, fmt: cxcywh, normalize: True}
   shuffle: True
@@ -95,7 +99,7 @@ train_dataloader:
   persistent_workers: True
   prefetch_factor: 4
   collate_fn:
-    base_size: 800
+    base_size: 640
     base_size_repeat: 3
     stop_epoch: 150
 
@@ -105,7 +109,7 @@ val_dataloader:
     ann_file: /root/autodl-tmp/DroneVehicle/instances_val.json
     transforms:
       ops:
-        - {type: Resize, size: [800, 800]}
+        - {type: Resize, size: [640, 640]}
         - {type: Normalize, mean: [0.485, 0.456, 0.406, 0.485, 0.456, 0.406], std: [0.229, 0.224, 0.225, 0.229, 0.224, 0.225]}
         - {type: ConvertBoxes, fmt: cxcywh, normalize: True}
   shuffle: False
