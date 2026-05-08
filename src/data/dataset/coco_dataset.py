@@ -28,24 +28,84 @@ class CocoDetection(FasterCocoDetection, DetDataset):
     __inject__ = ["transforms"]
     __share__ = ["remap_mscoco_category"]
 
-    def __init__(self, img_folder, ann_file, transforms, return_masks=False, remap_mscoco_category=False):
+    def __init__(self, img_folder, ann_file, transforms, return_masks=False, remap_mscoco_category=False, ann_file_ir=None):
         super(FasterCocoDetection, self).__init__(img_folder, ann_file)
         self._transforms = transforms
         self.img_folder = img_folder
         self.ann_file = ann_file
+        self.ann_file_ir = ann_file_ir
         self.return_masks = return_masks
         self.remap_mscoco_category = remap_mscoco_category
         self.prepare = ConvertCocoPolysToMask(return_masks)
+        self.coco_ir = type(self.coco)(ann_file_ir) if ann_file_ir else None
+        self.ir_image_key_to_id = self._build_ir_image_index() if self.coco_ir is not None else {}
         self._filter_missing_rgb_ir_pairs()
 
     def __getitem__(self, idx):
-        img, target = self.load_item(idx)
+        img, target_rgb, target_ir = self.load_item(idx)
         if self._transforms is not None:
-            img, target, _ = self._transforms(img, target, self)
+            if target_ir is not None:
+                img, target_rgb, target_ir, _ = self._transforms(img, target_rgb, target_ir, self)
+            else:
+                img, target_rgb, _ = self._transforms(img, target_rgb, self)
+        target = self._merge_modal_targets(target_rgb, target_ir)
         return img, target
 
+    @staticmethod
+    def _candidate_keys_from_path(path):
+        """Build robust matching keys for paired RGB/IR entries in COCO json files."""
+        if path is None:
+            return []
+        base = os.path.basename(str(path)).lower()
+        stem, ext = os.path.splitext(base)
+        keys = [base, stem]
+        if stem.endswith('r'):
+            keys.extend([stem[:-1], stem[:-1] + ext])
+        return [k for k in keys if k]
+
+    def _build_ir_image_index(self):
+        key_to_id = {}
+        for image_id in self.coco_ir.getImgIds():
+            info = self.coco_ir.loadImgs(image_id)[0]
+            for key in self._candidate_keys_from_path(info.get('file_name', '')):
+                key_to_id.setdefault(key, image_id)
+        return key_to_id
+
+    def _resolve_ir_image_id(self, rgb_file_name, ir_path):
+        for key in self._candidate_keys_from_path(ir_path) + self._candidate_keys_from_path(rgb_file_name):
+            if key in self.ir_image_key_to_id:
+                return self.ir_image_key_to_id[key]
+        raise FileNotFoundError(
+            "未在红外标注文件中找到与 RGB 图像匹配的 image 记录，"
+            f"RGB file_name='{rgb_file_name}', IR path='{ir_path}'。"
+        )
+
+    def _merge_modal_targets(self, target_rgb, target_ir=None):
+        """Keep RGB fields as the default target and attach modality-specific annotations."""
+        target = target_rgb.copy()
+        target["rgb_boxes"] = target_rgb["boxes"]
+        target["rgb_labels"] = target_rgb["labels"]
+        target["rgb_image_id"] = target_rgb["image_id"]
+        target["rgb_orig_size"] = target_rgb["orig_size"]
+        if "area" in target_rgb:
+            target["rgb_area"] = target_rgb["area"]
+        if "iscrowd" in target_rgb:
+            target["rgb_iscrowd"] = target_rgb["iscrowd"]
+
+        if target_ir is not None:
+            target["ir_boxes"] = target_ir["boxes"]
+            target["ir_labels"] = target_ir["labels"]
+            target["ir_image_id"] = target_ir["image_id"]
+            target["ir_image_path"] = target_ir["image_path"]
+            target["ir_orig_size"] = target_ir["orig_size"]
+            if "area" in target_ir:
+                target["ir_area"] = target_ir["area"]
+            if "iscrowd" in target_ir:
+                target["ir_iscrowd"] = target_ir["iscrowd"]
+        return target
+
     def _filter_missing_rgb_ir_pairs(self):
-        """Drop image ids that do not have both visible and infrared files."""
+        """Drop image ids that do not have both visible and infrared files and annotations."""
         kept_ids = []
         missing = []
         for image_id in list(self.ids):
@@ -53,15 +113,17 @@ class CocoDetection(FasterCocoDetection, DetDataset):
             file_name = img_info['file_name']
             try:
                 path_v = self._resolve_visible_path(file_name)
-                self._resolve_ir_path(path_v)
+                path_ir = self._resolve_ir_path(path_v)
+                if self.coco_ir is not None:
+                    self._resolve_ir_image_id(file_name, path_ir)
                 kept_ids.append(image_id)
             except FileNotFoundError as exc:
                 missing.append((file_name, str(exc).split('\n')[0]))
 
         if missing:
             print(
-                f"[CocoDetection] Skip {len(missing)} images without RGB-IR pairs "
-                f"from {self.ann_file}. Keep {len(kept_ids)} images."
+                f"[CocoDetection] Skip {len(missing)} images without complete RGB-IR pairs "
+                f"or annotations from {self.ann_file}. Keep {len(kept_ids)} images."
             )
             for file_name, reason in missing[:20]:
                 print(f"[CocoDetection] missing pair: {file_name} | {reason}")
@@ -197,6 +259,22 @@ class CocoDetection(FasterCocoDetection, DetDataset):
             )
         )
 
+    def _prepare_target(self, image, image_id, image_path, annotations):
+        target_dict = {"image_id": image_id, "image_path": image_path, "annotations": annotations}
+        if self.remap_mscoco_category:
+            _, target_dict = self.prepare(image, target_dict, category2label=mscoco_category2label)
+        else:
+            _, target_dict = self.prepare(image, target_dict)
+
+        if "boxes" in target_dict:
+            # ConvertCocoPolysToMask returns rotated boxes in (cx, cy, w, h, angle).
+            # Mark the first four coordinates as CXCYWH so ConvertBoxes(normalize=True)
+            # divides (cx, w) by image width and (cy, h) by image height correctly.
+            target_dict["boxes"] = convert_to_tv_tensor(
+                target_dict["boxes"], key="boxes", box_format="cxcywh", spatial_size=image.size[::-1]
+            )
+        return target_dict
+
     def load_item(self, idx):
         image_id = self.ids[idx]
         img_info = self.coco.loadImgs(image_id)[0]
@@ -215,27 +293,22 @@ class CocoDetection(FasterCocoDetection, DetDataset):
         except OSError as e:
             raise OSError(f"红外图像读取失败，可能文件损坏: {path_ir}") from e
 
-        ann_ids = self.coco.getAnnIds(imgIds=image_id)
-        target_raw = self.coco.loadAnns(ann_ids)
-        target_dict = {"image_id": image_id, "image_path": path_v, "annotations": target_raw}
+        ann_ids_rgb = self.coco.getAnnIds(imgIds=image_id)
+        target_raw_rgb = self.coco.loadAnns(ann_ids_rgb)
+        target_dict_rgb = self._prepare_target(img_v, image_id, path_v, target_raw_rgb)
 
-        # 根据 yml 配置决定是否重映射标签
-        if self.remap_mscoco_category:
-            _, target_dict = self.prepare(img_v, target_dict, category2label=mscoco_category2label)
-        else:
-            _, target_dict = self.prepare(img_v, target_dict)
+        target_dict_ir = None
+        if self.coco_ir is not None:
+            image_id_ir = self._resolve_ir_image_id(file_name, path_ir)
+            ann_ids_ir = self.coco_ir.getAnnIds(imgIds=image_id_ir)
+            target_raw_ir = self.coco_ir.loadAnns(ann_ids_ir)
+            target_dict_ir = self._prepare_target(img_ir, image_id_ir, path_ir, target_raw_ir)
 
         img_6ch = torch.cat([F.to_tensor(img_v), F.to_tensor(img_ir)], dim=0) 
-        target_dict["idx"] = torch.tensor([idx])
-        
-        if "boxes" in target_dict:
-            # ConvertCocoPolysToMask returns rotated boxes in (cx, cy, w, h, angle).
-            # Mark the first four coordinates as CXCYWH so ConvertBoxes(normalize=True)
-            # divides (cx, w) by image width and (cy, h) by image height correctly.
-            target_dict["boxes"] = convert_to_tv_tensor(
-                target_dict["boxes"], key="boxes", box_format="cxcywh", spatial_size=img_v.size[::-1]
-            )
-        return img_6ch, target_dict
+        target_dict_rgb["idx"] = torch.tensor([idx])
+        if target_dict_ir is not None:
+            target_dict_ir["idx"] = torch.tensor([idx])
+        return img_6ch, target_dict_rgb, target_dict_ir
 
 class ConvertCocoPolysToMask(object):
     def __init__(self, return_masks=False):
