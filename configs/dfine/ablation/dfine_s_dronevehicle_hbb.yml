@@ -1,0 +1,90 @@
+__include__: [
+  '../../dataset/coco_detection.yml',
+  '../../runtime.yml',
+  '../include/dataloader.yml',
+  '../include/optimizer.yml',
+  '../include/dfine_hgnetv2.yml',
+]
+
+# Ablation: HBB Head (keep IACF, remove angle prediction and GWD)
+# Horizontal bounding box (HBB) output, 4-dim boxes, no angle head, no GWD loss.
+
+epochs: 160
+warmup_epochs: 10
+use_amp: True
+seed: 42
+eval_freq: 5
+skip_initial_eval: True
+eval_hbb: True
+eval_obb: False
+primary_metric: mAP50
+num_classes: 5
+remap_mscoco_category: True
+output_dir: ./output/dfine_s_dronevehicle_hbb
+
+DFINE:
+  backbone: HGNetv2
+  decoder: DFINETransformer
+  box_format: hbb
+  fusion_mode: advanced
+  fusion_use_cmi: True
+  fusion_use_illum: True
+  fusion_use_glsa: True
+
+DFINECriterion:
+  riou_mode: aabb
+  losses: ['labels', 'boxes']
+  weight_dict:
+    loss_vfl: 2.0
+    loss_bbox: 5.0
+    loss_riou: 0.0
+    loss_fgl: 0.0
+  num_bins: 16
+  class_weights: [0.24, 1.00, 1.14, 1.35, 1.28]
+
+train_dataloader:
+  dataset:
+    img_folder: /root/autodl-tmp/DroneVehicle/train/trainimg
+    ann_file: /root/autodl-tmp/DroneVehicle/instances_train.json
+    return_masks: False
+    transforms:
+      ops:
+        - {type: RandomHorizontalFlip}
+        - {type: Resize, size: [640, 640]}
+        - {type: Normalize, mean: [0.485, 0.456, 0.406, 0.485, 0.456, 0.406], std: [0.229, 0.224, 0.225, 0.229, 0.224, 0.225]}
+        - {type: ConvertBoxes, fmt: cxcywh, normalize: True}
+  shuffle: True
+  total_batch_size: 12
+  num_workers: 12
+  pin_memory: True
+  persistent_workers: True
+  prefetch_factor: 4
+
+val_dataloader:
+  dataset:
+    img_folder: /root/autodl-tmp/DroneVehicle/val/valimg
+    ann_file: /root/autodl-tmp/DroneVehicle/instances_val.json
+    transforms:
+      ops:
+        - {type: Resize, size: [640, 640]}
+        - {type: Normalize, mean: [0.485, 0.456, 0.406, 0.485, 0.456, 0.406], std: [0.229, 0.224, 0.225, 0.229, 0.224, 0.225]}
+        - {type: ConvertBoxes, fmt: cxcywh, normalize: True}
+  shuffle: False
+  total_batch_size: 8
+  num_workers: 8
+  pin_memory: True
+  persistent_workers: True
+  prefetch_factor: 4
+
+optimizer:
+  type: AdamW
+  params:
+    - {params: '^(?=.*backbone)(?!.*norm|bn).*$', lr: 0.00004}
+    - {params: '^(?=.*(?:fusion_layers|glsa|illum_extract|alignment|rgb_enhance|ir_enhance|scale_gate)).*$', lr: 0.0004}
+    - {params: '^(?=.*(?:encoder|decoder))(?!.*(?:norm|bn|bias)).*$', lr: 0.0002}
+  weight_decay: 0.0001
+
+lr_scheduler:
+  type: MultiStepLR
+  milestones: [120, 150]
+  gamma: 0.1
