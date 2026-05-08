@@ -34,12 +34,7 @@ class MLP(nn.Module):
 
 
 class TransformerDecoderLayer(nn.Module):
-    """A practical DETR-style decoder layer for RGB-IR OBB training.
-
-    It restores query self-attention and dense cross-attention over multi-scale
-    encoder features.  This replaces the previous global-pooling placeholder
-    head, while keeping the output contract used by the current OBB criterion.
-    """
+    """A practical DETR-style decoder layer for RGB-IR detection."""
 
     def __init__(
         self,
@@ -92,11 +87,11 @@ class TransformerDecoderLayer(nn.Module):
 
 @register()
 class DFINETransformer(nn.Module):
-    """Multi-scale transformer decoder with an OBB angle head.
+    """Multi-scale transformer decoder.
 
-    Inputs are the fused feature maps from HybridEncoder.  The decoder selects
-    top-k encoder locations as queries, refines normalized cxcywh boxes layer by
-    layer, and predicts a fifth angle value in radians for oriented boxes.
+    box_format controls the detection head:
+      - "obb": predict [cx, cy, w, h, angle] rotated boxes.
+      - "hbb": predict [cx, cy, w, h] horizontal boxes and do not build angle heads.
     """
 
     __share__ = ["num_classes", "eval_spatial_size"]
@@ -129,6 +124,7 @@ class DFINETransformer(nn.Module):
         reg_scale=4.0,
         layer_scale=1,
         num_bins=None,
+        box_format="obb",
         **kwargs,
     ):
         super().__init__()
@@ -147,6 +143,10 @@ class DFINETransformer(nn.Module):
         self.eval_spatial_size = eval_spatial_size
         self.feat_strides = feat_strides
         self.eps = eps
+        self.box_format = str(box_format).lower()
+        if self.box_format not in {"obb", "hbb"}:
+            raise ValueError(f"Unsupported box_format={box_format}; expected 'obb' or 'hbb'.")
+        self.predict_angle = self.box_format == "obb"
 
         self._build_input_proj_layer(feat_channels)
         self.level_embed = nn.Parameter(torch.Tensor(num_levels, hidden_dim))
@@ -174,11 +174,15 @@ class DFINETransformer(nn.Module):
         self.dec_bbox_head = nn.ModuleList([
             MLP(hidden_dim, hidden_dim, 4, 3) for _ in range(num_layers)
         ])
-        self.dec_angle_head = nn.ModuleList([
-            MLP(hidden_dim, hidden_dim, 1, 3) for _ in range(num_layers)
-        ])
+        if self.predict_angle:
+            self.dec_angle_head = nn.ModuleList([
+                MLP(hidden_dim, hidden_dim, 1, 3) for _ in range(num_layers)
+            ])
+            self.pre_angle_head = MLP(hidden_dim, hidden_dim, 1, 3)
+        else:
+            self.dec_angle_head = None
+            self.pre_angle_head = None
         self.pre_bbox_head = MLP(hidden_dim, hidden_dim, 4, 3)
-        self.pre_angle_head = MLP(hidden_dim, hidden_dim, 1, 3)
 
         self.num_denoising = 0
         self._reset_parameters(feat_channels)
@@ -190,15 +194,19 @@ class DFINETransformer(nn.Module):
         init.constant_(self.enc_bbox_head.layers[-1].bias, 0)
         init.constant_(self.pre_bbox_head.layers[-1].weight, 0)
         init.constant_(self.pre_bbox_head.layers[-1].bias, 0)
-        init.constant_(self.pre_angle_head.layers[-1].weight, 0)
-        init.constant_(self.pre_angle_head.layers[-1].bias, 0)
 
-        for cls_, box_, ang_ in zip(self.dec_score_head, self.dec_bbox_head, self.dec_angle_head):
+        if self.predict_angle:
+            init.constant_(self.pre_angle_head.layers[-1].weight, 0)
+            init.constant_(self.pre_angle_head.layers[-1].bias, 0)
+
+        for i, (cls_, box_) in enumerate(zip(self.dec_score_head, self.dec_bbox_head)):
             init.constant_(cls_.bias, bias)
             init.constant_(box_.layers[-1].weight, 0)
             init.constant_(box_.layers[-1].bias, 0)
-            init.constant_(ang_.layers[-1].weight, 0)
-            init.constant_(ang_.layers[-1].bias, 0)
+            if self.predict_angle:
+                ang_ = self.dec_angle_head[i]
+                init.constant_(ang_.layers[-1].weight, 0)
+                init.constant_(ang_.layers[-1].bias, 0)
 
         init.xavier_uniform_(self.enc_output[0].weight)
         init.normal_(self.level_embed)
@@ -334,6 +342,14 @@ class DFINETransformer(nn.Module):
         angle = torch.tanh(angle_raw) * (math.pi / 2.0)
         return torch.cat([box4.clamp(0, 1), angle], dim=-1)
 
+    def _format_box(self, box4, angle_raw=None):
+        box4 = box4.clamp(0, 1)
+        if not self.predict_angle:
+            return box4
+        if angle_raw is None:
+            angle_raw = box4.new_zeros((*box4.shape[:-1], 1))
+        return self._make_rbox(box4, angle_raw)
+
     def forward(self, feats, targets=None):
         memory, memory_pos, spatial_shapes = self._get_encoder_input(feats)
         target, ref_points_unact, enc_topk_bboxes_list, enc_topk_logits_list = self._get_decoder_input(
@@ -345,7 +361,8 @@ class DFINETransformer(nn.Module):
         output_boxes, output_logits = [], []
 
         pre_box4 = torch.sigmoid(self.pre_bbox_head(output) + inverse_sigmoid(ref_points))
-        pre_rbox = self._make_rbox(pre_box4, self.pre_angle_head(output))
+        pre_angle = self.pre_angle_head(output) if self.predict_angle else None
+        pre_box = self._format_box(pre_box4, pre_angle)
         pre_logits = self.dec_score_head[0](output)
 
         for i, layer in enumerate(self.layers):
@@ -354,10 +371,11 @@ class DFINETransformer(nn.Module):
 
             delta = self.dec_bbox_head[i](output)
             box4 = torch.sigmoid(delta + inverse_sigmoid(ref_points))
-            rbox = self._make_rbox(box4, self.dec_angle_head[i](output))
+            angle = self.dec_angle_head[i](output) if self.predict_angle else None
+            det_box = self._format_box(box4, angle)
             logits = self.dec_score_head[i](output)
 
-            output_boxes.append(rbox)
+            output_boxes.append(det_box)
             output_logits.append(logits)
             ref_points = box4.detach()
 
@@ -370,10 +388,9 @@ class DFINETransformer(nn.Module):
             out["aux_outputs"] = self._set_aux_loss(output_logits[:-1], output_boxes[:-1])
             enc_aux = []
             for a, b in zip(enc_topk_logits_list, enc_topk_bboxes_list):
-                zero_angle = b.new_zeros((*b.shape[:-1], 1))
-                enc_aux.append({"pred_logits": a, "pred_boxes": torch.cat([b, zero_angle], dim=-1)})
+                enc_aux.append({"pred_logits": a, "pred_boxes": self._format_box(b)})
             out["enc_aux_outputs"] = enc_aux
-            out["pre_outputs"] = {"pred_logits": pre_logits, "pred_boxes": pre_rbox}
+            out["pre_outputs"] = {"pred_logits": pre_logits, "pred_boxes": pre_box}
             out["enc_meta"] = {"class_agnostic": False}
 
         return out
