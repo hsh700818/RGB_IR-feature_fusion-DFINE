@@ -191,6 +191,23 @@ class ScaleGate(nn.Module):
         return w_rgb, w_ir
 
 
+class SimpleConcatFusion(nn.Module):
+    """
+    Plain RGB-IR concatenation fusion for the no-IACF ablation.
+
+    This block keeps the dual-stream RGB/IR input pathway but removes the
+    illumination estimation, cross-modal interaction, deformable alignment,
+    scale gate, and GLSA components used by AdvancedMultimodalFusion.
+    """
+
+    def __init__(self, ch):
+        super().__init__()
+        self.fusion_conv = nn.Conv2d(ch * 2, ch, 1)
+
+    def forward(self, f_rgb, f_ir):
+        return self.fusion_conv(torch.cat([f_rgb, f_ir], dim=1))
+
+
 class AdvancedMultimodalFusion(nn.Module):
     """
     AAF + optional CMI + scale-aware DFS-lite gate + optional GLSA.
@@ -281,12 +298,21 @@ class DFINE(nn.Module):
         fusion_use_cmi: bool = True,
         fusion_use_illum: bool = True,
         fusion_use_glsa: bool = True,
+        fusion_mode: str = "advanced",
     ):
         super().__init__()
         self.backbone = backbone
         self.backbone_ir = copy.deepcopy(backbone)
         self.encoder = encoder
         self.decoder = decoder
+        self.fusion_mode = str(fusion_mode).lower()
+
+        supported_fusion_modes = {"advanced", "iacf", "simple_concat", "concat"}
+        if self.fusion_mode not in supported_fusion_modes:
+            raise ValueError(
+                f"Unsupported fusion_mode={fusion_mode}. "
+                f"Expected one of {sorted(supported_fusion_modes)}."
+            )
 
         in_channels = encoder.in_channels
         self.fusion_layers = nn.ModuleList()
@@ -295,10 +321,10 @@ class DFINE(nn.Module):
         num_levels = len(in_channels)
         ir_biases = [1.0 - 2.0 * i / max(num_levels - 1, 1) for i in range(num_levels)]
         for level_idx, (ch, ir_bias) in enumerate(zip(in_channels, ir_biases)):
-            # P3 (level 0) is the largest map — skip CMI there for speed.
-            use_cmi_level = fusion_use_cmi and (level_idx > 0)
-            self.fusion_layers.append(
-                AdvancedMultimodalFusion(
+            if self.fusion_mode in {"advanced", "iacf"}:
+                # P3 (level 0) is the largest map — skip CMI there for speed.
+                use_cmi_level = fusion_use_cmi and (level_idx > 0)
+                fusion_layer = AdvancedMultimodalFusion(
                     ch,
                     use_cmi=use_cmi_level,
                     max_tokens=196,
@@ -306,7 +332,10 @@ class DFINE(nn.Module):
                     use_glsa=fusion_use_glsa,
                     ir_bias=ir_bias,
                 )
-            )
+            else:
+                fusion_layer = SimpleConcatFusion(ch)
+
+            self.fusion_layers.append(fusion_layer)
 
     def forward(self, x, targets=None):
         x_rgb = x[:, :3, :, :]
