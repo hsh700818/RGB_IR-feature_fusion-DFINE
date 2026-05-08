@@ -7,29 +7,72 @@ __include__: [
 ]
 
 # Ablation: HBB Head (keep IACF, remove angle prediction and GWD)
-# Horizontal bounding box (HBB) output, 4-dim boxes, no angle head, no GWD loss.
+# Horizontal bounding box output, 4-dim boxes, no angle head, no GWD loss.
 
 epochs: 160
 warmup_epochs: 10
 use_amp: True
 seed: 42
+# 每 5 轮验证一次，避免每轮训练后都长时间卡在验证阶段。
 eval_freq: 5
 skip_initial_eval: True
 eval_hbb: True
 eval_obb: False
 primary_metric: mAP50
+# 保留 160 轮作为训练上限，80 轮后若连续 8 次验证无明显提升则提前停止。
+early_stop_start_epoch: 80
+early_stop_patience: 8
+early_stop_min_delta: 0.001
+
 num_classes: 5
 remap_mscoco_category: True
 output_dir: ./output/dfine_s_dronevehicle_hbb
+eval_spatial_size: [640, 640]
 
 DFINE:
   backbone: HGNetv2
+  encoder: HybridEncoder
   decoder: DFINETransformer
-  box_format: hbb
   fusion_mode: advanced
   fusion_use_cmi: True
   fusion_use_illum: True
   fusion_use_glsa: True
+
+HGNetv2:
+  name: 'B0'
+  return_idx: [1, 2, 3]
+  freeze_at: -1
+  freeze_norm: False
+  use_lab: True
+
+HybridEncoder:
+  in_channels: [256, 512, 1024]
+  feat_strides: [8, 16, 32]
+  hidden_dim: 256
+  use_encoder_idx: [2]
+  dim_feedforward: 1024
+  expansion: 0.5
+  depth_mult: 0.34
+
+DFINETransformer:
+  num_classes: 5
+  hidden_dim: 256
+  num_queries: 300
+  feat_channels: [256, 256, 256]
+  feat_strides: [8, 16, 32]
+  num_levels: 3
+  nhead: 8
+  num_layers: 6
+  dim_feedforward: 1024
+  dropout: 0.0
+  activation: relu
+  eval_idx: -1
+  aux_loss: True
+  learn_query_content: False
+  query_select_method: default
+  num_denoising: 0
+  num_bins: 16
+  box_format: hbb
 
 DFINECriterion:
   riou_mode: aabb
@@ -37,9 +80,12 @@ DFINECriterion:
   weight_dict:
     loss_vfl: 2.0
     loss_bbox: 5.0
-    loss_riou: 0.0
+    loss_giou: 2.0
     loss_fgl: 0.0
   num_bins: 16
+  # Inverse-sqrt frequency weights for DroneVehicle class imbalance.
+  # Order: car, truck, bus, van, freight car (matches category_id 1-5).
+  # Raw inv-sqrt: 1.08, 4.52, 5.13, 5.77, 6.09 → normalised by mean (4.52).
   class_weights: [0.24, 1.00, 1.14, 1.35, 1.28]
 
 train_dataloader:
@@ -59,6 +105,10 @@ train_dataloader:
   pin_memory: True
   persistent_workers: True
   prefetch_factor: 4
+  collate_fn:
+    base_size: 640
+    base_size_repeat: 3
+    stop_epoch: 150
 
 val_dataloader:
   dataset:
