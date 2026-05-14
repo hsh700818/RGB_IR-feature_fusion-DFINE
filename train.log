@@ -1,0 +1,469 @@
+nohup: ignoring input
+
+libgomp: Invalid value for environment variable OMP_NUM_THREADS
+Disabling PyTorch because PyTorch >= 2.4 is required but found 2.1.0+cu118
+PyTorch was not found. Models won't be available and only tokenizers, configuration and file/data utilities can be used.
+Not init distributed mode.
+cfg: 
+{'_collate_fn': None,
+ '_criterion': None,
+ '_ema': None,
+ '_evaluator': None,
+ '_lr_scheduler': None,
+ '_lr_warmup_scheduler': None,
+ '_model': None,
+ '_optimizer': None,
+ '_postprocessor': None,
+ '_scaler': None,
+ '_train_batch_size': None,
+ '_train_dataloader': None,
+ '_train_dataset': None,
+ '_train_shuffle': None,
+ '_val_batch_size': None,
+ '_val_dataloader': None,
+ '_val_dataset': None,
+ '_val_shuffle': None,
+ '_writer': None,
+ 'batch_size': None,
+ 'checkpoint_freq': 12,
+ 'clip_max_norm': 0.1,
+ 'device': '',
+ 'ema_decay': 0.9999,
+ 'ema_warmups': 2000,
+ 'epochs': 160,
+ 'find_unused_parameters': False,
+ 'last_epoch': -1,
+ 'num_workers': 0,
+ 'output_dir': './output/dronevehicle_v6',
+ 'print_freq': 100,
+ 'resume': None,
+ 'seed': 42,
+ 'summary_dir': None,
+ 'sync_bn': True,
+ 'task': 'detection',
+ 'tuning': None,
+ 'use_amp': True,
+ 'use_ema': True,
+ 'yaml_cfg': {'DFINE': {'backbone': 'HGNetv2',
+                        'decoder': 'DFINETransformer',
+                        'encoder': 'HybridEncoder'},
+              'DFINECriterion': {'alpha': 0.75,
+                                 'class_weights': [0.24, 1.0, 1.14, 1.35, 1.28],
+                                 'gamma': 2.0,
+                                 'losses': ['labels', 'rboxes'],
+                                 'matcher': {'alpha': 0.25,
+                                             'gamma': 2.0,
+                                             'type': 'HungarianMatcher',
+                                             'weight_dict': {'cost_bbox': 5,
+                                                             'cost_class': 2,
+                                                             'cost_giou': 2}},
+                                 'num_bins': 16,
+                                 'reg_max': 32,
+                                 'riou_mode': 'gwd',
+                                 'weight_dict': {'loss_bbox': 5.0,
+                                                 'loss_ddf': 1.5,
+                                                 'loss_fgl': 0.0,
+                                                 'loss_giou': 2,
+                                                 'loss_riou': 2.0,
+                                                 'loss_vfl': 2.0}},
+              'DFINEPostProcessor': {'num_top_queries': 300},
+              'DFINETransformer': {'activation': 'relu',
+                                   'aux_loss': True,
+                                   'box_noise_scale': 1.0,
+                                   'cross_attn_method': 'default',
+                                   'dim_feedforward': 1024,
+                                   'dropout': 0.0,
+                                   'eval_idx': -1,
+                                   'feat_channels': [256, 256, 256],
+                                   'feat_strides': [8, 16, 32],
+                                   'hidden_dim': 256,
+                                   'label_noise_ratio': 0.5,
+                                   'layer_scale': 1,
+                                   'learn_query_content': False,
+                                   'nhead': 8,
+                                   'num_bins': 16,
+                                   'num_classes': 5,
+                                   'num_denoising': 0,
+                                   'num_layers': 6,
+                                   'num_levels': 3,
+                                   'num_points': [3, 6, 3],
+                                   'num_queries': 300,
+                                   'query_select_method': 'default',
+                                   'reg_max': 32,
+                                   'reg_scale': 4},
+              'HGNetv2': {'freeze_at': -1,
+                          'freeze_norm': False,
+                          'local_model_dir': 'weight/hgnetv2/',
+                          'name': 'B0',
+                          'pretrained': True,
+                          'return_idx': [1, 2, 3],
+                          'use_lab': True},
+              'HybridEncoder': {'act': 'silu',
+                                'depth_mult': 0.34,
+                                'dim_feedforward': 1024,
+                                'dropout': 0.0,
+                                'enc_act': 'gelu',
+                                'expansion': 0.5,
+                                'feat_strides': [8, 16, 32],
+                                'hidden_dim': 256,
+                                'in_channels': [256, 512, 1024],
+                                'nhead': 8,
+                                'num_encoder_layers': 1,
+                                'use_encoder_idx': [2]},
+              '__include__': ['../dataset/coco_detection.yml',
+                              '../runtime.yml',
+                              './include/dataloader.yml',
+                              './include/optimizer.yml',
+                              './include/dfine_hgnetv2.yml'],
+              'checkpoint_freq': 12,
+              'clip_max_norm': 0.1,
+              'criterion': 'DFINECriterion',
+              'early_stop_min_delta': 0.001,
+              'early_stop_patience': 8,
+              'early_stop_start_epoch': 80,
+              'ema': {'decay': 0.9999,
+                      'start': 0,
+                      'type': 'ModelEMA',
+                      'warmups': 1000},
+              'epochs': 160,
+              'eval_freq': 5,
+              'eval_hbb': False,
+              'eval_obb': True,
+              'eval_obb_max_dets': 100,
+              'eval_obb_score_thr': 0.001,
+              'eval_spatial_size': [640, 640],
+              'evaluator': {'iou_types': ['bbox'], 'type': 'CocoEvaluator'},
+              'exp_name': 'baseline',
+              'find_unused_parameters': False,
+              'lr_scheduler': {'gamma': 0.1,
+                               'milestones': [120, 150],
+                               'type': 'MultiStepLR'},
+              'lr_warmup_scheduler': {'type': 'LinearWarmup',
+                                      'warmup_duration': 500},
+              'model': 'DFINE',
+              'num_classes': 5,
+              'optimizer': {'betas': [0.9, 0.999],
+                            'lr': 0.00025,
+                            'params': [{'lr': 4e-05,
+                                        'params': '^(?=.*backbone)(?!.*norm|bn).*$'},
+                                       {'lr': 0.0004,
+                                        'params': '^(?=.*(?:fusion_layers|glsa|illum_extract|alignment|rgb_enhance|ir_enhance|scale_gate)).*$'},
+                                       {'lr': 0.0002,
+                                        'params': '^(?=.*(?:encoder|decoder))(?!.*(?:norm|bn|bias)).*$'}],
+                            'type': 'AdamW',
+                            'weight_decay': 0.0001},
+              'output_dir': './output/dronevehicle_v6',
+              'postprocessor': 'DFINEPostProcessor',
+              'primary_metric': 'obb_mAP50',
+              'print_freq': 100,
+              'print_method': 'builtin',
+              'print_rank': 0,
+              'project_name': 'D-FINE',
+              'remap_mscoco_category': True,
+              'scaler': {'enabled': True, 'type': 'GradScaler'},
+              'seed': 42,
+              'skip_initial_eval': True,
+              'sync_bn': True,
+              'task': 'detection',
+              'test_only': False,
+              'train_dataloader': {'collate_fn': {'base_size': 640,
+                                                  'base_size_repeat': 3,
+                                                  'stop_epoch': 150,
+                                                  'type': 'BatchImageCollateFunction'},
+                                   'dataset': {'ann_file': '/root/autodl-tmp/DroneVehicle/annotations_OBB/train_rgb_obb.json',
+                                               'ann_file_ir': '/root/autodl-tmp/DroneVehicle/annotations_OBB/train_ir_obb.json',
+                                               'img_folder': '/root/autodl-tmp/DroneVehicle/train/trainimg',
+                                               'return_masks': False,
+                                               'transforms': {'ops': [{'type': 'RandomHorizontalFlip'},
+                                                                      {'size': [640,
+                                                                                640],
+                                                                       'type': 'Resize'},
+                                                                      {'mean': [0.485,
+                                                                                0.456,
+                                                                                0.406,
+                                                                                0.485,
+                                                                                0.456,
+                                                                                0.406],
+                                                                       'std': [0.229,
+                                                                               0.224,
+                                                                               0.225,
+                                                                               0.229,
+                                                                               0.224,
+                                                                               0.225],
+                                                                       'type': 'Normalize'},
+                                                                      {'fmt': 'cxcywh',
+                                                                       'normalize': True,
+                                                                       'type': 'ConvertBoxes'}],
+                                                              'policy': {'epoch': 148,
+                                                                         'name': 'stop_epoch',
+                                                                         'ops': ['RandomPhotometricDistort',
+                                                                                 'RandomZoomOut',
+                                                                                 'RandomIoUCrop']},
+                                                              'type': 'Compose'},
+                                               'type': 'CocoDetection'},
+                                   'drop_last': True,
+                                   'num_workers': 12,
+                                   'persistent_workers': True,
+                                   'pin_memory': True,
+                                   'prefetch_factor': 4,
+                                   'shuffle': True,
+                                   'total_batch_size': 18,
+                                   'type': 'DataLoader'},
+              'use_amp': True,
+              'use_ema': True,
+              'use_focal_loss': True,
+              'use_wandb': False,
+              'val_dataloader': {'collate_fn': {'type': 'BatchImageCollateFunction'},
+                                 'dataset': {'ann_file': '/root/autodl-tmp/DroneVehicle/annotations_OBB/val_rgb_obb.json',
+                                             'ann_file_ir': '/root/autodl-tmp/DroneVehicle/annotations_OBB/val_ir_obb.json',
+                                             'img_folder': '/root/autodl-tmp/DroneVehicle/val/valimg',
+                                             'return_masks': False,
+                                             'transforms': {'ops': [{'size': [640,
+                                                                              640],
+                                                                     'type': 'Resize'},
+                                                                    {'mean': [0.485,
+                                                                              0.456,
+                                                                              0.406,
+                                                                              0.485,
+                                                                              0.456,
+                                                                              0.406],
+                                                                     'std': [0.229,
+                                                                             0.224,
+                                                                             0.225,
+                                                                             0.229,
+                                                                             0.224,
+                                                                             0.225],
+                                                                     'type': 'Normalize'},
+                                                                    {'fmt': 'cxcywh',
+                                                                     'normalize': True,
+                                                                     'type': 'ConvertBoxes'}],
+                                                            'type': 'Compose'},
+                                             'type': 'CocoDetection'},
+                                 'drop_last': False,
+                                 'num_workers': 8,
+                                 'persistent_workers': True,
+                                 'pin_memory': True,
+                                 'prefetch_factor': 4,
+                                 'shuffle': False,
+                                 'total_batch_size': 18,
+                                 'type': 'DataLoader'},
+              'warmup_epochs': 10}}
+[92mIf the pretrained HGNetV2 can't be downloaded automatically. Please check your network connection.[0m
+[92mPlease check your network connection. Or download the model manually from [0mhttps://github.com/Peterande/storage/releases/download/dfinev1.0/PPHGNetV2_B0_stage1.pth[92m to [0mweight/hgnetv2/.[0m
+Loaded stage1 B0 HGNetV2 from URL.
+Loaded stage1 B0 HGNetV2 from URL.
+Initial lr: [4e-05, 0.0004, 0.0002, 0.00025]
+building train_dataloader with batch_size=18...
+[CocoDetection] Skip 17 images without complete RGB-IR pairs or annotations from /root/autodl-tmp/DroneVehicle/annotations_OBB/train_rgb_obb.json. Keep 17962 images.
+[CocoDetection] missing pair: 04992.jpg | 未找到红外图像，可见光图像路径='/root/autodl-tmp/DroneVehicle/train/trainimg/04992.jpg'。已尝试路径：
+[CocoDetection] missing pair: 04993.jpg | 未找到红外图像，可见光图像路径='/root/autodl-tmp/DroneVehicle/train/trainimg/04993.jpg'。已尝试路径：
+[CocoDetection] missing pair: 04994.jpg | 未找到红外图像，可见光图像路径='/root/autodl-tmp/DroneVehicle/train/trainimg/04994.jpg'。已尝试路径：
+[CocoDetection] missing pair: 05002.jpg | 未找到红外图像，可见光图像路径='/root/autodl-tmp/DroneVehicle/train/trainimg/05002.jpg'。已尝试路径：
+[CocoDetection] missing pair: 05003.jpg | 未找到红外图像，可见光图像路径='/root/autodl-tmp/DroneVehicle/train/trainimg/05003.jpg'。已尝试路径：
+[CocoDetection] missing pair: 06464.jpg | 未找到红外图像，可见光图像路径='/root/autodl-tmp/DroneVehicle/train/trainimg/06464.jpg'。已尝试路径：
+[CocoDetection] missing pair: 06465.jpg | 未找到红外图像，可见光图像路径='/root/autodl-tmp/DroneVehicle/train/trainimg/06465.jpg'。已尝试路径：
+[CocoDetection] missing pair: 06466.jpg | 未找到红外图像，可见光图像路径='/root/autodl-tmp/DroneVehicle/train/trainimg/06466.jpg'。已尝试路径：
+[CocoDetection] missing pair: 06467.jpg | 未找到红外图像，可见光图像路径='/root/autodl-tmp/DroneVehicle/train/trainimg/06467.jpg'。已尝试路径：
+[CocoDetection] missing pair: 14036.jpg | 未找到红外图像，可见光图像路径='/root/autodl-tmp/DroneVehicle/train/trainimg/14036.jpg'。已尝试路径：
+[CocoDetection] missing pair: 14037.jpg | 未找到红外图像，可见光图像路径='/root/autodl-tmp/DroneVehicle/train/trainimg/14037.jpg'。已尝试路径：
+[CocoDetection] missing pair: 14038.jpg | 未找到红外图像，可见光图像路径='/root/autodl-tmp/DroneVehicle/train/trainimg/14038.jpg'。已尝试路径：
+[CocoDetection] missing pair: 14049.jpg | 未找到红外图像，可见光图像路径='/root/autodl-tmp/DroneVehicle/train/trainimg/14049.jpg'。已尝试路径：
+[CocoDetection] missing pair: 14050.jpg | 未找到红外图像，可见光图像路径='/root/autodl-tmp/DroneVehicle/train/trainimg/14050.jpg'。已尝试路径：
+[CocoDetection] missing pair: 16010.jpg | 未找到红外图像，可见光图像路径='/root/autodl-tmp/DroneVehicle/train/trainimg/16010.jpg'。已尝试路径：
+[CocoDetection] missing pair: 16011.jpg | 未找到红外图像，可见光图像路径='/root/autodl-tmp/DroneVehicle/train/trainimg/16011.jpg'。已尝试路径：
+[CocoDetection] missing pair: 16012.jpg | 未找到红外图像，可见光图像路径='/root/autodl-tmp/DroneVehicle/train/trainimg/16012.jpg'。已尝试路径：
+building val_dataloader with batch_size=18...
+
+------------------------------------- Calculate Flops Results -------------------------------------
+Notations:
+number of parameters (Params), number of multiply-accumulate operations(MACs),
+number of floating-point operations (FLOPs), floating-point operations per second (FLOPS),
+fwd FLOPs (model forward propagation FLOPs), bwd FLOPs (model backward propagation FLOPs),
+default model backpropagation takes 2.00 times as much computation as forward propagation.
+
+Total Training Params:                                                  39.95 M 
+fwd MACs:                                                               27.3698 GMACs
+fwd FLOPs:                                                              54.9341 GFLOPS
+fwd+bwd MACs:                                                           82.1095 GMACs
+fwd+bwd FLOPs:                                                          164.802 GFLOPS
+---------------------------------------------------------------------------------------------------
+{'Model FLOPs:54.9341 GFLOPS   MACs:27.3698 GMACs   Params:39949027'}
+------------------------------------------Start training-------------------------------------------
+Evaluation settings: eval_freq=5, eval_hbb=False, eval_obb=True, primary_metric=obb_mAP50, skip_initial_eval=True, eval_obb_max_dets=100, eval_obb_score_thr=0.001, early_stop_patience=8, early_stop_min_delta=0.001, early_stop_start_epoch=80
+/root/miniconda3/envs/dfine/lib/python3.11/site-packages/torchvision/transforms/functional.py:1603: UserWarning: The default value of the antialias parameter of all the resizing transforms (Resize(), RandomResizedCrop(), etc.) will change from None to True in v0.17, in order to be consistent across the PIL and Tensor backends. To suppress this warning, directly pass antialias=True (recommended, future default), antialias=None (current default, which means False for Tensors and True for PIL), or antialias=False (only works on Tensors - PIL will still use antialiasing). This also applies if you are using the inference transforms from the models weights: update the call to weights.transforms(antialias=True).
+  warnings.warn(
+/root/miniconda3/envs/dfine/lib/python3.11/site-packages/torchvision/transforms/functional.py:1603: UserWarning: The default value of the antialias parameter of all the resizing transforms (Resize(), RandomResizedCrop(), etc.) will change from None to True in v0.17, in order to be consistent across the PIL and Tensor backends. To suppress this warning, directly pass antialias=True (recommended, future default), antialias=None (current default, which means False for Tensors and True for PIL), or antialias=False (only works on Tensors - PIL will still use antialiasing). This also applies if you are using the inference transforms from the models weights: update the call to weights.transforms(antialias=True).
+  warnings.warn(
+/root/miniconda3/envs/dfine/lib/python3.11/site-packages/torchvision/transforms/functional.py:1603: UserWarning: The default value of the antialias parameter of all the resizing transforms (Resize(), RandomResizedCrop(), etc.) will change from None to True in v0.17, in order to be consistent across the PIL and Tensor backends. To suppress this warning, directly pass antialias=True (recommended, future default), antialias=None (current default, which means False for Tensors and True for PIL), or antialias=False (only works on Tensors - PIL will still use antialiasing). This also applies if you are using the inference transforms from the models weights: update the call to weights.transforms(antialias=True).
+  warnings.warn(
+/root/miniconda3/envs/dfine/lib/python3.11/site-packages/torchvision/transforms/functional.py:1603: UserWarning: The default value of the antialias parameter of all the resizing transforms (Resize(), RandomResizedCrop(), etc.) will change from None to True in v0.17, in order to be consistent across the PIL and Tensor backends. To suppress this warning, directly pass antialias=True (recommended, future default), antialias=None (current default, which means False for Tensors and True for PIL), or antialias=False (only works on Tensors - PIL will still use antialiasing). This also applies if you are using the inference transforms from the models weights: update the call to weights.transforms(antialias=True).
+  warnings.warn(
+/root/miniconda3/envs/dfine/lib/python3.11/site-packages/torchvision/transforms/functional.py:1603: UserWarning: The default value of the antialias parameter of all the resizing transforms (Resize(), RandomResizedCrop(), etc.) will change from None to True in v0.17, in order to be consistent across the PIL and Tensor backends. To suppress this warning, directly pass antialias=True (recommended, future default), antialias=None (current default, which means False for Tensors and True for PIL), or antialias=False (only works on Tensors - PIL will still use antialiasing). This also applies if you are using the inference transforms from the models weights: update the call to weights.transforms(antialias=True).
+  warnings.warn(
+/root/miniconda3/envs/dfine/lib/python3.11/site-packages/torchvision/transforms/functional.py:1603: UserWarning: The default value of the antialias parameter of all the resizing transforms (Resize(), RandomResizedCrop(), etc.) will change from None to True in v0.17, in order to be consistent across the PIL and Tensor backends. To suppress this warning, directly pass antialias=True (recommended, future default), antialias=None (current default, which means False for Tensors and True for PIL), or antialias=False (only works on Tensors - PIL will still use antialiasing). This also applies if you are using the inference transforms from the models weights: update the call to weights.transforms(antialias=True).
+  warnings.warn(
+/root/miniconda3/envs/dfine/lib/python3.11/site-packages/torchvision/transforms/functional.py:1603: UserWarning: The default value of the antialias parameter of all the resizing transforms (Resize(), RandomResizedCrop(), etc.) will change from None to True in v0.17, in order to be consistent across the PIL and Tensor backends. To suppress this warning, directly pass antialias=True (recommended, future default), antialias=None (current default, which means False for Tensors and True for PIL), or antialias=False (only works on Tensors - PIL will still use antialiasing). This also applies if you are using the inference transforms from the models weights: update the call to weights.transforms(antialias=True).
+  warnings.warn(
+/root/miniconda3/envs/dfine/lib/python3.11/site-packages/torchvision/transforms/functional.py:1603: UserWarning: The default value of the antialias parameter of all the resizing transforms (Resize(), RandomResizedCrop(), etc.) will change from None to True in v0.17, in order to be consistent across the PIL and Tensor backends. To suppress this warning, directly pass antialias=True (recommended, future default), antialias=None (current default, which means False for Tensors and True for PIL), or antialias=False (only works on Tensors - PIL will still use antialiasing). This also applies if you are using the inference transforms from the models weights: update the call to weights.transforms(antialias=True).
+  warnings.warn(
+/root/miniconda3/envs/dfine/lib/python3.11/site-packages/torchvision/transforms/functional.py:1603: UserWarning: The default value of the antialias parameter of all the resizing transforms (Resize(), RandomResizedCrop(), etc.) will change from None to True in v0.17, in order to be consistent across the PIL and Tensor backends. To suppress this warning, directly pass antialias=True (recommended, future default), antialias=None (current default, which means False for Tensors and True for PIL), or antialias=False (only works on Tensors - PIL will still use antialiasing). This also applies if you are using the inference transforms from the models weights: update the call to weights.transforms(antialias=True).
+  warnings.warn(
+/root/miniconda3/envs/dfine/lib/python3.11/site-packages/torchvision/transforms/functional.py:1603: UserWarning: The default value of the antialias parameter of all the resizing transforms (Resize(), RandomResizedCrop(), etc.) will change from None to True in v0.17, in order to be consistent across the PIL and Tensor backends. To suppress this warning, directly pass antialias=True (recommended, future default), antialias=None (current default, which means False for Tensors and True for PIL), or antialias=False (only works on Tensors - PIL will still use antialiasing). This also applies if you are using the inference transforms from the models weights: update the call to weights.transforms(antialias=True).
+  warnings.warn(
+/root/miniconda3/envs/dfine/lib/python3.11/site-packages/torchvision/transforms/functional.py:1603: UserWarning: The default value of the antialias parameter of all the resizing transforms (Resize(), RandomResizedCrop(), etc.) will change from None to True in v0.17, in order to be consistent across the PIL and Tensor backends. To suppress this warning, directly pass antialias=True (recommended, future default), antialias=None (current default, which means False for Tensors and True for PIL), or antialias=False (only works on Tensors - PIL will still use antialiasing). This also applies if you are using the inference transforms from the models weights: update the call to weights.transforms(antialias=True).
+  warnings.warn(
+/root/miniconda3/envs/dfine/lib/python3.11/site-packages/torchvision/transforms/functional.py:1603: UserWarning: The default value of the antialias parameter of all the resizing transforms (Resize(), RandomResizedCrop(), etc.) will change from None to True in v0.17, in order to be consistent across the PIL and Tensor backends. To suppress this warning, directly pass antialias=True (recommended, future default), antialias=None (current default, which means False for Tensors and True for PIL), or antialias=False (only works on Tensors - PIL will still use antialiasing). This also applies if you are using the inference transforms from the models weights: update the call to weights.transforms(antialias=True).
+  warnings.warn(
+Epoch: [0/160]  [  0/997]  eta: 4:11:02  lr: 0.000000  loss: 12.1529 (12.1529)  loss_vfl: 0.1388 (0.1388)  loss_bbox: 1.3517 (1.3517)  loss_riou: 0.0052 (0.0052)  loss_vfl_0: 0.1460 (0.1460)  loss_bbox_0: 1.3438 (1.3438)  loss_riou_0: 0.0050 (0.0050)  loss_vfl_1: 0.1358 (0.1358)  loss_bbox_1: 1.3768 (1.3768)  loss_riou_1: 0.0053 (0.0053)  loss_vfl_2: 0.1620 (0.1620)  loss_bbox_2: 1.3060 (1.3060)  loss_riou_2: 0.0047 (0.0047)  loss_vfl_3: 0.1541 (0.1541)  loss_bbox_3: 1.3184 (1.3184)  loss_riou_3: 0.0046 (0.0046)  loss_vfl_4: 0.1352 (0.1352)  loss_bbox_4: 1.3215 (1.3215)  loss_riou_4: 0.0050 (0.0050)  loss_vfl_enc_0: 0.1264 (0.1264)  loss_bbox_enc_0: 1.5918 (1.5918)  loss_riou_enc_0: 0.0084 (0.0084)  loss_vfl_pre: 0.1480 (0.1480)  loss_bbox_pre: 1.3530 (1.3530)  loss_riou_pre: 0.0051 (0.0051)  time: 15.1073  data: 5.6438  max mem: 20691
+Epoch: [0/160]  [100/997]  eta: 0:18:43  lr: 0.000008  loss: 7.6844 (9.1780)  loss_vfl: 0.0592 (0.0771)  loss_bbox: 0.9014 (1.0340)  loss_riou: 0.0019 (0.0028)  loss_vfl_0: 0.0566 (0.0922)  loss_bbox_0: 0.8992 (1.0563)  loss_riou_0: 0.0016 (0.0029)  loss_vfl_1: 0.0564 (0.0860)  loss_bbox_1: 0.8869 (1.0586)  loss_riou_1: 0.0017 (0.0029)  loss_vfl_2: 0.0567 (0.0950)  loss_bbox_2: 0.8853 (1.0419)  loss_riou_2: 0.0018 (0.0028)  loss_vfl_3: 0.0570 (0.0897)  loss_bbox_3: 0.8881 (1.0338)  loss_riou_3: 0.0018 (0.0027)  loss_vfl_4: 0.0572 (0.0808)  loss_bbox_4: 0.9001 (1.0370)  loss_riou_4: 0.0019 (0.0028)  loss_vfl_enc_0: 0.0484 (0.0761)  loss_bbox_enc_0: 0.9057 (1.1059)  loss_riou_enc_0: 0.0018 (0.0035)  loss_vfl_pre: 0.1154 (0.1251)  loss_bbox_pre: 0.9095 (1.0652)  loss_riou_pre: 0.0017 (0.0030)  time: 1.0125  data: 0.0001  max mem: 20858
+Epoch: [0/160]  [200/997]  eta: 0:14:53  lr: 0.000016  loss: 7.4525 (8.5491)  loss_vfl: 0.0422 (0.0643)  loss_bbox: 0.8834 (0.9832)  loss_riou: 0.0018 (0.0025)  loss_vfl_0: 0.0410 (0.0727)  loss_bbox_0: 0.8781 (0.9913)  loss_riou_0: 0.0017 (0.0025)  loss_vfl_1: 0.0431 (0.0686)  loss_bbox_1: 0.8848 (0.9938)  loss_riou_1: 0.0017 (0.0026)  loss_vfl_2: 0.0421 (0.0733)  loss_bbox_2: 0.8809 (0.9862)  loss_riou_2: 0.0017 (0.0025)  loss_vfl_3: 0.0436 (0.0705)  loss_bbox_3: 0.8848 (0.9821)  loss_riou_3: 0.0017 (0.0025)  loss_vfl_4: 0.0421 (0.0661)  loss_bbox_4: 0.8859 (0.9851)  loss_riou_4: 0.0017 (0.0025)  loss_vfl_enc_0: 0.0364 (0.0609)  loss_bbox_enc_0: 0.8832 (1.0176)  loss_riou_enc_0: 0.0017 (0.0028)  loss_vfl_pre: 0.0920 (0.1180)  loss_bbox_pre: 0.8722 (0.9951)  loss_riou_pre: 0.0017 (0.0025)  time: 0.9756  data: 0.0001  max mem: 20858
+Epoch: [0/160]  [300/997]  eta: 0:12:27  lr: 0.000024  loss: 7.3064 (8.2274)  loss_vfl: 0.0378 (0.0578)  loss_bbox: 0.8741 (0.9540)  loss_riou: 0.0011 (0.0022)  loss_vfl_0: 0.0368 (0.0632)  loss_bbox_0: 0.8619 (0.9609)  loss_riou_0: 0.0014 (0.0022)  loss_vfl_1: 0.0374 (0.0601)  loss_bbox_1: 0.8687 (0.9622)  loss_riou_1: 0.0012 (0.0023)  loss_vfl_2: 0.0378 (0.0636)  loss_bbox_2: 0.8770 (0.9566)  loss_riou_2: 0.0012 (0.0022)  loss_vfl_3: 0.0373 (0.0619)  loss_bbox_3: 0.8762 (0.9540)  loss_riou_3: 0.0012 (0.0022)  loss_vfl_4: 0.0375 (0.0591)  loss_bbox_4: 0.8764 (0.9561)  loss_riou_4: 0.0012 (0.0022)  loss_vfl_enc_0: 0.0351 (0.0541)  loss_bbox_enc_0: 0.8390 (0.9758)  loss_riou_enc_0: 0.0012 (0.0025)  loss_vfl_pre: 0.0730 (0.1082)  loss_bbox_pre: 0.8487 (0.9616)  loss_riou_pre: 0.0013 (0.0023)  time: 1.0063  data: 0.0002  max mem: 20858
+Epoch: [0/160]  [400/997]  eta: 0:10:21  lr: 0.000032  loss: 6.7650 (7.9380)  loss_vfl: 0.0410 (0.0538)  loss_bbox: 0.7982 (0.9251)  loss_riou: 0.0008 (0.0019)  loss_vfl_0: 0.0387 (0.0574)  loss_bbox_0: 0.7918 (0.9314)  loss_riou_0: 0.0009 (0.0020)  loss_vfl_1: 0.0382 (0.0550)  loss_bbox_1: 0.8079 (0.9314)  loss_riou_1: 0.0008 (0.0020)  loss_vfl_2: 0.0378 (0.0577)  loss_bbox_2: 0.8074 (0.9275)  loss_riou_2: 0.0009 (0.0019)  loss_vfl_3: 0.0384 (0.0563)  loss_bbox_3: 0.8002 (0.9255)  loss_riou_3: 0.0009 (0.0019)  loss_vfl_4: 0.0402 (0.0544)  loss_bbox_4: 0.7988 (0.9273)  loss_riou_4: 0.0009 (0.0019)  loss_vfl_enc_0: 0.0359 (0.0501)  loss_bbox_enc_0: 0.8015 (0.9412)  loss_riou_enc_0: 0.0009 (0.0021)  loss_vfl_pre: 0.0631 (0.0981)  loss_bbox_pre: 0.7880 (0.9300)  loss_riou_pre: 0.0009 (0.0020)  time: 0.9567  data: 0.0001  max mem: 20858
+Epoch: [0/160]  [500/997]  eta: 0:08:26  lr: 0.000040  loss: 6.8974 (7.7270)  loss_vfl: 0.0365 (0.0509)  loss_bbox: 0.8285 (0.9040)  loss_riou: 0.0008 (0.0017)  loss_vfl_0: 0.0395 (0.0535)  loss_bbox_0: 0.8262 (0.9097)  loss_riou_0: 0.0009 (0.0018)  loss_vfl_1: 0.0398 (0.0515)  loss_bbox_1: 0.8301 (0.9095)  loss_riou_1: 0.0009 (0.0018)  loss_vfl_2: 0.0414 (0.0536)  loss_bbox_2: 0.8354 (0.9066)  loss_riou_2: 0.0009 (0.0017)  loss_vfl_3: 0.0387 (0.0527)  loss_bbox_3: 0.8362 (0.9046)  loss_riou_3: 0.0008 (0.0017)  loss_vfl_4: 0.0367 (0.0513)  loss_bbox_4: 0.8345 (0.9060)  loss_riou_4: 0.0008 (0.0017)  loss_vfl_enc_0: 0.0379 (0.0474)  loss_bbox_enc_0: 0.8320 (0.9162)  loss_riou_enc_0: 0.0008 (0.0019)  loss_vfl_pre: 0.0490 (0.0889)  loss_bbox_pre: 0.8095 (0.9068)  loss_riou_pre: 0.0007 (0.0018)  time: 0.9812  data: 0.0001  max mem: 20858
+Epoch: [0/160]  [600/997]  eta: 0:06:41  lr: 0.000040  loss: 6.9586 (7.5666)  loss_vfl: 0.0257 (0.0482)  loss_bbox: 0.8344 (0.8883)  loss_riou: 0.0006 (0.0015)  loss_vfl_0: 0.0265 (0.0501)  loss_bbox_0: 0.8346 (0.8938)  loss_riou_0: 0.0007 (0.0016)  loss_vfl_1: 0.0269 (0.0485)  loss_bbox_1: 0.8305 (0.8931)  loss_riou_1: 0.0006 (0.0016)  loss_vfl_2: 0.0255 (0.0504)  loss_bbox_2: 0.8353 (0.8908)  loss_riou_2: 0.0006 (0.0016)  loss_vfl_3: 0.0253 (0.0495)  loss_bbox_3: 0.8396 (0.8890)  loss_riou_3: 0.0006 (0.0016)  loss_vfl_4: 0.0251 (0.0484)  loss_bbox_4: 0.8400 (0.8900)  loss_riou_4: 0.0006 (0.0016)  loss_vfl_enc_0: 0.0257 (0.0449)  loss_bbox_enc_0: 0.8323 (0.8980)  loss_riou_enc_0: 0.0006 (0.0017)  loss_vfl_pre: 0.0327 (0.0812)  loss_bbox_pre: 0.8201 (0.8897)  loss_riou_pre: 0.0006 (0.0016)  time: 0.9571  data: 0.0001  max mem: 20858
+Epoch: [0/160]  [700/997]  eta: 0:04:59  lr: 0.000040  loss: 6.6756 (7.4578)  loss_vfl: 0.0352 (0.0465)  loss_bbox: 0.7995 (0.8778)  loss_riou: 0.0007 (0.0014)  loss_vfl_0: 0.0318 (0.0478)  loss_bbox_0: 0.7964 (0.8828)  loss_riou_0: 0.0008 (0.0015)  loss_vfl_1: 0.0333 (0.0466)  loss_bbox_1: 0.8004 (0.8820)  loss_riou_1: 0.0007 (0.0015)  loss_vfl_2: 0.0334 (0.0482)  loss_bbox_2: 0.7986 (0.8800)  loss_riou_2: 0.0007 (0.0015)  loss_vfl_3: 0.0334 (0.0475)  loss_bbox_3: 0.7994 (0.8784)  loss_riou_3: 0.0007 (0.0014)  loss_vfl_4: 0.0353 (0.0467)  loss_bbox_4: 0.7999 (0.8793)  loss_riou_4: 0.0007 (0.0014)  loss_vfl_enc_0: 0.0318 (0.0433)  loss_bbox_enc_0: 0.7968 (0.8857)  loss_riou_enc_0: 0.0007 (0.0016)  loss_vfl_pre: 0.0377 (0.0751)  loss_bbox_pre: 0.7903 (0.8783)  loss_riou_pre: 0.0006 (0.0015)  time: 1.0214  data: 0.0001  max mem: 20858
+Epoch: [0/160]  [800/997]  eta: 0:03:19  lr: 0.000040  loss: 6.3995 (7.3579)  loss_vfl: 0.0276 (0.0448)  loss_bbox: 0.7682 (0.8681)  loss_riou: 0.0006 (0.0013)  loss_vfl_0: 0.0266 (0.0457)  loss_bbox_0: 0.7734 (0.8727)  loss_riou_0: 0.0006 (0.0014)  loss_vfl_1: 0.0263 (0.0448)  loss_bbox_1: 0.7680 (0.8718)  loss_riou_1: 0.0006 (0.0014)  loss_vfl_2: 0.0263 (0.0461)  loss_bbox_2: 0.7706 (0.8702)  loss_riou_2: 0.0006 (0.0014)  loss_vfl_3: 0.0269 (0.0455)  loss_bbox_3: 0.7733 (0.8687)  loss_riou_3: 0.0006 (0.0014)  loss_vfl_4: 0.0267 (0.0449)  loss_bbox_4: 0.7709 (0.8695)  loss_riou_4: 0.0006 (0.0014)  loss_vfl_enc_0: 0.0266 (0.0417)  loss_bbox_enc_0: 0.7601 (0.8745)  loss_riou_enc_0: 0.0006 (0.0014)  loss_vfl_pre: 0.0318 (0.0702)  loss_bbox_pre: 0.7553 (0.8676)  loss_riou_pre: 0.0005 (0.0014)  time: 0.9128  data: 0.0001  max mem: 20858
+Epoch: [0/160]  [900/997]  eta: 0:01:37  lr: 0.000040  loss: 6.5830 (7.2783)  loss_vfl: 0.0290 (0.0434)  loss_bbox: 0.7920 (0.8603)  loss_riou: 0.0006 (0.0013)  loss_vfl_0: 0.0273 (0.0441)  loss_bbox_0: 0.7908 (0.8646)  loss_riou_0: 0.0006 (0.0013)  loss_vfl_1: 0.0278 (0.0432)  loss_bbox_1: 0.7868 (0.8637)  loss_riou_1: 0.0005 (0.0013)  loss_vfl_2: 0.0278 (0.0444)  loss_bbox_2: 0.7883 (0.8623)  loss_riou_2: 0.0005 (0.0013)  loss_vfl_3: 0.0283 (0.0440)  loss_bbox_3: 0.7880 (0.8609)  loss_riou_3: 0.0005 (0.0013)  loss_vfl_4: 0.0280 (0.0434)  loss_bbox_4: 0.7927 (0.8615)  loss_riou_4: 0.0005 (0.0013)  loss_vfl_enc_0: 0.0270 (0.0405)  loss_bbox_enc_0: 0.7819 (0.8657)  loss_riou_enc_0: 0.0005 (0.0014)  loss_vfl_pre: 0.0289 (0.0663)  loss_bbox_pre: 0.7860 (0.8595)  loss_riou_pre: 0.0005 (0.0013)  time: 0.9611  data: 0.0002  max mem: 20858
+Epoch: [0/160]  [996/997]  eta: 0:00:00  lr: 0.000040  loss: 6.7378 (7.2352)  loss_vfl: 0.0307 (0.0423)  loss_bbox: 0.8193 (0.8567)  loss_riou: 0.0007 (0.0012)  loss_vfl_0: 0.0284 (0.0428)  loss_bbox_0: 0.8160 (0.8606)  loss_riou_0: 0.0007 (0.0013)  loss_vfl_1: 0.0285 (0.0421)  loss_bbox_1: 0.8165 (0.8597)  loss_riou_1: 0.0007 (0.0012)  loss_vfl_2: 0.0288 (0.0432)  loss_bbox_2: 0.8186 (0.8585)  loss_riou_2: 0.0007 (0.0012)  loss_vfl_3: 0.0307 (0.0428)  loss_bbox_3: 0.8175 (0.8572)  loss_riou_3: 0.0007 (0.0012)  loss_vfl_4: 0.0311 (0.0424)  loss_bbox_4: 0.8179 (0.8578)  loss_riou_4: 0.0007 (0.0012)  loss_vfl_enc_0: 0.0282 (0.0396)  loss_bbox_enc_0: 0.8094 (0.8611)  loss_riou_enc_0: 0.0006 (0.0013)  loss_vfl_pre: 0.0312 (0.0632)  loss_bbox_pre: 0.8059 (0.8555)  loss_riou_pre: 0.0006 (0.0012)  time: 0.9021  data: 0.0001  max mem: 20858
+Epoch: [0/160] Total time: 0:16:34 (0.9978 s / it)
+Averaged stats: lr: 0.000040  loss: 6.7378 (7.2352)  loss_vfl: 0.0307 (0.0423)  loss_bbox: 0.8193 (0.8567)  loss_riou: 0.0007 (0.0012)  loss_vfl_0: 0.0284 (0.0428)  loss_bbox_0: 0.8160 (0.8606)  loss_riou_0: 0.0007 (0.0013)  loss_vfl_1: 0.0285 (0.0421)  loss_bbox_1: 0.8165 (0.8597)  loss_riou_1: 0.0007 (0.0012)  loss_vfl_2: 0.0288 (0.0432)  loss_bbox_2: 0.8186 (0.8585)  loss_riou_2: 0.0007 (0.0012)  loss_vfl_3: 0.0307 (0.0428)  loss_bbox_3: 0.8175 (0.8572)  loss_riou_3: 0.0007 (0.0012)  loss_vfl_4: 0.0311 (0.0424)  loss_bbox_4: 0.8179 (0.8578)  loss_riou_4: 0.0007 (0.0012)  loss_vfl_enc_0: 0.0282 (0.0396)  loss_bbox_enc_0: 0.8094 (0.8611)  loss_riou_enc_0: 0.0006 (0.0013)  loss_vfl_pre: 0.0312 (0.0632)  loss_bbox_pre: 0.8059 (0.8555)  loss_riou_pre: 0.0006 (0.0012)
+Skip evaluation at epoch 0. Next evaluation epoch: 4
+Epoch: [1/160]  [  0/997]  eta: 0:49:14  lr: 0.000040  loss: 5.3349 (5.3349)  loss_vfl: 0.0204 (0.0204)  loss_bbox: 0.6481 (0.6481)  loss_riou: 0.0004 (0.0004)  loss_vfl_0: 0.0189 (0.0189)  loss_bbox_0: 0.6477 (0.6477)  loss_riou_0: 0.0004 (0.0004)  loss_vfl_1: 0.0189 (0.0189)  loss_bbox_1: 0.6490 (0.6490)  loss_riou_1: 0.0004 (0.0004)  loss_vfl_2: 0.0199 (0.0199)  loss_bbox_2: 0.6492 (0.6492)  loss_riou_2: 0.0004 (0.0004)  loss_vfl_3: 0.0194 (0.0194)  loss_bbox_3: 0.6487 (0.6487)  loss_riou_3: 0.0004 (0.0004)  loss_vfl_4: 0.0202 (0.0202)  loss_bbox_4: 0.6488 (0.6488)  loss_riou_4: 0.0004 (0.0004)  loss_vfl_enc_0: 0.0197 (0.0197)  loss_bbox_enc_0: 0.6406 (0.6406)  loss_riou_enc_0: 0.0003 (0.0003)  loss_vfl_pre: 0.0212 (0.0212)  loss_bbox_pre: 0.6411 (0.6411)  loss_riou_pre: 0.0003 (0.0003)  time: 2.9632  data: 1.8486  max mem: 20858
+Epoch: [1/160]  [100/997]  eta: 0:15:23  lr: 0.000040  loss: 6.5734 (6.6543)  loss_vfl: 0.0237 (0.0282)  loss_bbox: 0.7886 (0.8052)  loss_riou: 0.0005 (0.0007)  loss_vfl_0: 0.0222 (0.0268)  loss_bbox_0: 0.7853 (0.8049)  loss_riou_0: 0.0005 (0.0007)  loss_vfl_1: 0.0217 (0.0269)  loss_bbox_1: 0.7819 (0.8035)  loss_riou_1: 0.0005 (0.0007)  loss_vfl_2: 0.0227 (0.0273)  loss_bbox_2: 0.7751 (0.8035)  loss_riou_2: 0.0005 (0.0007)  loss_vfl_3: 0.0225 (0.0273)  loss_bbox_3: 0.7804 (0.8044)  loss_riou_3: 0.0005 (0.0007)  loss_vfl_4: 0.0228 (0.0277)  loss_bbox_4: 0.7843 (0.8042)  loss_riou_4: 0.0005 (0.0007)  loss_vfl_enc_0: 0.0218 (0.0271)  loss_bbox_enc_0: 0.7770 (0.8013)  loss_riou_enc_0: 0.0005 (0.0006)  loss_vfl_pre: 0.0243 (0.0298)  loss_bbox_pre: 0.7793 (0.8008)  loss_riou_pre: 0.0005 (0.0006)  time: 1.0283  data: 0.0001  max mem: 20858
+Epoch: [1/160]  [200/997]  eta: 0:13:58  lr: 0.000040  loss: 6.7844 (6.5860)  loss_vfl: 0.0286 (0.0272)  loss_bbox: 0.8210 (0.7968)  loss_riou: 0.0006 (0.0006)  loss_vfl_0: 0.0276 (0.0260)  loss_bbox_0: 0.8224 (0.7974)  loss_riou_0: 0.0006 (0.0007)  loss_vfl_1: 0.0276 (0.0261)  loss_bbox_1: 0.8243 (0.7959)  loss_riou_1: 0.0006 (0.0006)  loss_vfl_2: 0.0272 (0.0264)  loss_bbox_2: 0.8241 (0.7960)  loss_riou_2: 0.0006 (0.0006)  loss_vfl_3: 0.0276 (0.0265)  loss_bbox_3: 0.8244 (0.7966)  loss_riou_3: 0.0007 (0.0006)  loss_vfl_4: 0.0284 (0.0269)  loss_bbox_4: 0.8221 (0.7962)  loss_riou_4: 0.0006 (0.0006)  loss_vfl_enc_0: 0.0290 (0.0262)  loss_bbox_enc_0: 0.8234 (0.7943)  loss_riou_enc_0: 0.0007 (0.0006)  loss_vfl_pre: 0.0314 (0.0288)  loss_bbox_pre: 0.8210 (0.7936)  loss_riou_pre: 0.0006 (0.0006)  time: 1.1646  data: 0.0002  max mem: 20858
+Epoch: [1/160]  [300/997]  eta: 0:12:31  lr: 0.000040  loss: 6.4962 (6.5830)  loss_vfl: 0.0256 (0.0271)  loss_bbox: 0.7885 (0.7962)  loss_riou: 0.0005 (0.0006)  loss_vfl_0: 0.0258 (0.0259)  loss_bbox_0: 0.7887 (0.7970)  loss_riou_0: 0.0005 (0.0007)  loss_vfl_1: 0.0264 (0.0261)  loss_bbox_1: 0.7856 (0.7959)  loss_riou_1: 0.0005 (0.0006)  loss_vfl_2: 0.0257 (0.0263)  loss_bbox_2: 0.7890 (0.7959)  loss_riou_2: 0.0005 (0.0006)  loss_vfl_3: 0.0254 (0.0265)  loss_bbox_3: 0.7839 (0.7962)  loss_riou_3: 0.0005 (0.0006)  loss_vfl_4: 0.0260 (0.0267)  loss_bbox_4: 0.7883 (0.7960)  loss_riou_4: 0.0005 (0.0006)  loss_vfl_enc_0: 0.0259 (0.0261)  loss_bbox_enc_0: 0.7827 (0.7942)  loss_riou_enc_0: 0.0006 (0.0006)  loss_vfl_pre: 0.0264 (0.0286)  loss_bbox_pre: 0.7783 (0.7932)  loss_riou_pre: 0.0006 (0.0006)  time: 1.1070  data: 0.0003  max mem: 20858
+Epoch: [1/160]  [400/997]  eta: 0:10:33  lr: 0.000040  loss: 6.3108 (6.5757)  loss_vfl: 0.0203 (0.0267)  loss_bbox: 0.7676 (0.7957)  loss_riou: 0.0006 (0.0006)  loss_vfl_0: 0.0204 (0.0255)  loss_bbox_0: 0.7695 (0.7963)  loss_riou_0: 0.0005 (0.0006)  loss_vfl_1: 0.0202 (0.0257)  loss_bbox_1: 0.7685 (0.7954)  loss_riou_1: 0.0006 (0.0006)  loss_vfl_2: 0.0205 (0.0259)  loss_bbox_2: 0.7667 (0.7954)  loss_riou_2: 0.0006 (0.0006)  loss_vfl_3: 0.0199 (0.0261)  loss_bbox_3: 0.7667 (0.7958)  loss_riou_3: 0.0006 (0.0006)  loss_vfl_4: 0.0201 (0.0264)  loss_bbox_4: 0.7678 (0.7955)  loss_riou_4: 0.0006 (0.0006)  loss_vfl_enc_0: 0.0201 (0.0258)  loss_bbox_enc_0: 0.7674 (0.7937)  loss_riou_enc_0: 0.0005 (0.0006)  loss_vfl_pre: 0.0217 (0.0280)  loss_bbox_pre: 0.7680 (0.7929)  loss_riou_pre: 0.0005 (0.0006)  time: 1.1600  data: 0.0002  max mem: 20858
+Epoch: [1/160]  [500/997]  eta: 0:08:44  lr: 0.000040  loss: 6.6578 (6.5437)  loss_vfl: 0.0228 (0.0263)  loss_bbox: 0.8044 (0.7918)  loss_riou: 0.0006 (0.0006)  loss_vfl_0: 0.0219 (0.0251)  loss_bbox_0: 0.8034 (0.7929)  loss_riou_0: 0.0007 (0.0006)  loss_vfl_1: 0.0227 (0.0254)  loss_bbox_1: 0.8004 (0.7918)  loss_riou_1: 0.0007 (0.0006)  loss_vfl_2: 0.0226 (0.0255)  loss_bbox_2: 0.8018 (0.7917)  loss_riou_2: 0.0006 (0.0006)  loss_vfl_3: 0.0231 (0.0258)  loss_bbox_3: 0.8009 (0.7920)  loss_riou_3: 0.0006 (0.0006)  loss_vfl_4: 0.0228 (0.0260)  loss_bbox_4: 0.8038 (0.7917)  loss_riou_4: 0.0006 (0.0006)  loss_vfl_enc_0: 0.0224 (0.0255)  loss_bbox_enc_0: 0.7996 (0.7902)  loss_riou_enc_0: 0.0007 (0.0006)  loss_vfl_pre: 0.0239 (0.0276)  loss_bbox_pre: 0.7998 (0.7896)  loss_riou_pre: 0.0006 (0.0006)  time: 0.9057  data: 0.0001  max mem: 20858
+Epoch: [1/160]  [600/997]  eta: 0:06:52  lr: 0.000040  loss: 6.2250 (6.5388)  loss_vfl: 0.0235 (0.0257)  loss_bbox: 0.7605 (0.7918)  loss_riou: 0.0005 (0.0006)  loss_vfl_0: 0.0213 (0.0245)  loss_bbox_0: 0.7575 (0.7929)  loss_riou_0: 0.0005 (0.0006)  loss_vfl_1: 0.0220 (0.0247)  loss_bbox_1: 0.7601 (0.7918)  loss_riou_1: 0.0005 (0.0006)  loss_vfl_2: 0.0229 (0.0249)  loss_bbox_2: 0.7719 (0.7917)  loss_riou_2: 0.0005 (0.0006)  loss_vfl_3: 0.0229 (0.0251)  loss_bbox_3: 0.7602 (0.7919)  loss_riou_3: 0.0005 (0.0006)  loss_vfl_4: 0.0236 (0.0254)  loss_bbox_4: 0.7617 (0.7917)  loss_riou_4: 0.0005 (0.0006)  loss_vfl_enc_0: 0.0215 (0.0248)  loss_bbox_enc_0: 0.7571 (0.7903)  loss_riou_enc_0: 0.0005 (0.0006)  loss_vfl_pre: 0.0223 (0.0268)  loss_bbox_pre: 0.7566 (0.7898)  loss_riou_pre: 0.0005 (0.0006)  time: 0.8855  data: 0.0001  max mem: 20858
+Epoch: [1/160]  [700/997]  eta: 0:05:07  lr: 0.000040  loss: 6.6062 (6.5442)  loss_vfl: 0.0223 (0.0253)  loss_bbox: 0.7937 (0.7928)  loss_riou: 0.0005 (0.0006)  loss_vfl_0: 0.0225 (0.0242)  loss_bbox_0: 0.7986 (0.7938)  loss_riou_0: 0.0005 (0.0006)  loss_vfl_1: 0.0218 (0.0244)  loss_bbox_1: 0.7946 (0.7927)  loss_riou_1: 0.0005 (0.0006)  loss_vfl_2: 0.0225 (0.0245)  loss_bbox_2: 0.7933 (0.7927)  loss_riou_2: 0.0005 (0.0006)  loss_vfl_3: 0.0222 (0.0248)  loss_bbox_3: 0.7938 (0.7929)  loss_riou_3: 0.0005 (0.0006)  loss_vfl_4: 0.0220 (0.0250)  loss_bbox_4: 0.7946 (0.7927)  loss_riou_4: 0.0005 (0.0006)  loss_vfl_enc_0: 0.0228 (0.0245)  loss_bbox_enc_0: 0.7975 (0.7914)  loss_riou_enc_0: 0.0005 (0.0006)  loss_vfl_pre: 0.0234 (0.0264)  loss_bbox_pre: 0.7911 (0.7910)  loss_riou_pre: 0.0005 (0.0006)  time: 1.0356  data: 0.0002  max mem: 20858
+Epoch: [1/160]  [800/997]  eta: 0:03:22  lr: 0.000040  loss: 6.4528 (6.5460)  loss_vfl: 0.0257 (0.0252)  loss_bbox: 0.7837 (0.7933)  loss_riou: 0.0006 (0.0006)  loss_vfl_0: 0.0251 (0.0241)  loss_bbox_0: 0.7834 (0.7941)  loss_riou_0: 0.0006 (0.0006)  loss_vfl_1: 0.0255 (0.0242)  loss_bbox_1: 0.7836 (0.7931)  loss_riou_1: 0.0006 (0.0006)  loss_vfl_2: 0.0252 (0.0244)  loss_bbox_2: 0.7835 (0.7931)  loss_riou_2: 0.0006 (0.0006)  loss_vfl_3: 0.0248 (0.0246)  loss_bbox_3: 0.7834 (0.7934)  loss_riou_3: 0.0006 (0.0006)  loss_vfl_4: 0.0255 (0.0249)  loss_bbox_4: 0.7837 (0.7932)  loss_riou_4: 0.0006 (0.0006)  loss_vfl_enc_0: 0.0261 (0.0244)  loss_bbox_enc_0: 0.7823 (0.7918)  loss_riou_enc_0: 0.0006 (0.0006)  loss_vfl_pre: 0.0264 (0.0262)  loss_bbox_pre: 0.7787 (0.7914)  loss_riou_pre: 0.0006 (0.0006)  time: 1.1171  data: 0.0002  max mem: 20858
+Epoch: [1/160]  [900/997]  eta: 0:01:40  lr: 0.000040  loss: 6.5646 (6.5281)  loss_vfl: 0.0197 (0.0247)  loss_bbox: 0.7998 (0.7915)  loss_riou: 0.0006 (0.0006)  loss_vfl_0: 0.0187 (0.0237)  loss_bbox_0: 0.8031 (0.7923)  loss_riou_0: 0.0006 (0.0006)  loss_vfl_1: 0.0194 (0.0238)  loss_bbox_1: 0.8028 (0.7913)  loss_riou_1: 0.0006 (0.0006)  loss_vfl_2: 0.0195 (0.0240)  loss_bbox_2: 0.8021 (0.7913)  loss_riou_2: 0.0006 (0.0006)  loss_vfl_3: 0.0195 (0.0242)  loss_bbox_3: 0.8024 (0.7916)  loss_riou_3: 0.0006 (0.0006)  loss_vfl_4: 0.0191 (0.0244)  loss_bbox_4: 0.8015 (0.7914)  loss_riou_4: 0.0006 (0.0006)  loss_vfl_enc_0: 0.0199 (0.0240)  loss_bbox_enc_0: 0.7995 (0.7899)  loss_riou_enc_0: 0.0006 (0.0006)  loss_vfl_pre: 0.0205 (0.0257)  loss_bbox_pre: 0.8031 (0.7895)  loss_riou_pre: 0.0005 (0.0006)  time: 1.0075  data: 0.0002  max mem: 20858
+Epoch: [1/160]  [996/997]  eta: 0:00:01  lr: 0.000040  loss: 6.2740 (6.5314)  loss_vfl: 0.0216 (0.0246)  loss_bbox: 0.7588 (0.7921)  loss_riou: 0.0006 (0.0006)  loss_vfl_0: 0.0212 (0.0236)  loss_bbox_0: 0.7619 (0.7928)  loss_riou_0: 0.0006 (0.0006)  loss_vfl_1: 0.0202 (0.0237)  loss_bbox_1: 0.7622 (0.7918)  loss_riou_1: 0.0005 (0.0006)  loss_vfl_2: 0.0205 (0.0238)  loss_bbox_2: 0.7587 (0.7918)  loss_riou_2: 0.0005 (0.0006)  loss_vfl_3: 0.0214 (0.0241)  loss_bbox_3: 0.7588 (0.7921)  loss_riou_3: 0.0006 (0.0006)  loss_vfl_4: 0.0215 (0.0243)  loss_bbox_4: 0.7582 (0.7920)  loss_riou_4: 0.0006 (0.0006)  loss_vfl_enc_0: 0.0210 (0.0239)  loss_bbox_enc_0: 0.7558 (0.7904)  loss_riou_enc_0: 0.0006 (0.0006)  loss_vfl_pre: 0.0212 (0.0255)  loss_bbox_pre: 0.7506 (0.7901)  loss_riou_pre: 0.0006 (0.0006)  time: 0.7455  data: 0.0001  max mem: 20858
+Epoch: [1/160] Total time: 0:16:57 (1.0205 s / it)
+Averaged stats: lr: 0.000040  loss: 6.2740 (6.5314)  loss_vfl: 0.0216 (0.0246)  loss_bbox: 0.7588 (0.7921)  loss_riou: 0.0006 (0.0006)  loss_vfl_0: 0.0212 (0.0236)  loss_bbox_0: 0.7619 (0.7928)  loss_riou_0: 0.0006 (0.0006)  loss_vfl_1: 0.0202 (0.0237)  loss_bbox_1: 0.7622 (0.7918)  loss_riou_1: 0.0005 (0.0006)  loss_vfl_2: 0.0205 (0.0238)  loss_bbox_2: 0.7587 (0.7918)  loss_riou_2: 0.0005 (0.0006)  loss_vfl_3: 0.0214 (0.0241)  loss_bbox_3: 0.7588 (0.7921)  loss_riou_3: 0.0006 (0.0006)  loss_vfl_4: 0.0215 (0.0243)  loss_bbox_4: 0.7582 (0.7920)  loss_riou_4: 0.0006 (0.0006)  loss_vfl_enc_0: 0.0210 (0.0239)  loss_bbox_enc_0: 0.7558 (0.7904)  loss_riou_enc_0: 0.0006 (0.0006)  loss_vfl_pre: 0.0212 (0.0255)  loss_bbox_pre: 0.7506 (0.7901)  loss_riou_pre: 0.0006 (0.0006)
+Skip evaluation at epoch 1. Next evaluation epoch: 4
+Epoch: [2/160]  [  0/997]  eta: 0:47:53  lr: 0.000040  loss: 5.7688 (5.7688)  loss_vfl: 0.0175 (0.0175)  loss_bbox: 0.7039 (0.7039)  loss_riou: 0.0003 (0.0003)  loss_vfl_0: 0.0178 (0.0178)  loss_bbox_0: 0.7041 (0.7041)  loss_riou_0: 0.0003 (0.0003)  loss_vfl_1: 0.0179 (0.0179)  loss_bbox_1: 0.7032 (0.7032)  loss_riou_1: 0.0003 (0.0003)  loss_vfl_2: 0.0175 (0.0175)  loss_bbox_2: 0.7041 (0.7041)  loss_riou_2: 0.0003 (0.0003)  loss_vfl_3: 0.0174 (0.0174)  loss_bbox_3: 0.7041 (0.7041)  loss_riou_3: 0.0003 (0.0003)  loss_vfl_4: 0.0176 (0.0176)  loss_bbox_4: 0.7040 (0.7040)  loss_riou_4: 0.0003 (0.0003)  loss_vfl_enc_0: 0.0176 (0.0176)  loss_bbox_enc_0: 0.7005 (0.7005)  loss_riou_enc_0: 0.0003 (0.0003)  loss_vfl_pre: 0.0185 (0.0185)  loss_bbox_pre: 0.7006 (0.7006)  loss_riou_pre: 0.0003 (0.0003)  time: 2.8820  data: 1.6187  max mem: 20858
+Epoch: [2/160]  [100/997]  eta: 0:17:19  lr: 0.000040  loss: 6.7073 (6.4768)  loss_vfl: 0.0195 (0.0226)  loss_bbox: 0.8182 (0.7878)  loss_riou: 0.0005 (0.0006)  loss_vfl_0: 0.0188 (0.0212)  loss_bbox_0: 0.8185 (0.7877)  loss_riou_0: 0.0006 (0.0006)  loss_vfl_1: 0.0192 (0.0213)  loss_bbox_1: 0.8177 (0.7873)  loss_riou_1: 0.0006 (0.0006)  loss_vfl_2: 0.0194 (0.0214)  loss_bbox_2: 0.8180 (0.7876)  loss_riou_2: 0.0006 (0.0006)  loss_vfl_3: 0.0191 (0.0217)  loss_bbox_3: 0.8183 (0.7877)  loss_riou_3: 0.0006 (0.0006)  loss_vfl_4: 0.0194 (0.0220)  loss_bbox_4: 0.8183 (0.7878)  loss_riou_4: 0.0006 (0.0006)  loss_vfl_enc_0: 0.0197 (0.0216)  loss_bbox_enc_0: 0.8190 (0.7862)  loss_riou_enc_0: 0.0006 (0.0006)  loss_vfl_pre: 0.0211 (0.0226)  loss_bbox_pre: 0.8209 (0.7857)  loss_riou_pre: 0.0006 (0.0006)  time: 1.1643  data: 0.0002  max mem: 20858
+Epoch: [2/160]  [200/997]  eta: 0:13:41  lr: 0.000040  loss: 6.1070 (6.4538)  loss_vfl: 0.0230 (0.0216)  loss_bbox: 0.7433 (0.7857)  loss_riou: 0.0004 (0.0006)  loss_vfl_0: 0.0223 (0.0209)  loss_bbox_0: 0.7422 (0.7852)  loss_riou_0: 0.0004 (0.0006)  loss_vfl_1: 0.0226 (0.0209)  loss_bbox_1: 0.7428 (0.7849)  loss_riou_1: 0.0004 (0.0006)  loss_vfl_2: 0.0228 (0.0209)  loss_bbox_2: 0.7417 (0.7849)  loss_riou_2: 0.0005 (0.0006)  loss_vfl_3: 0.0226 (0.0211)  loss_bbox_3: 0.7433 (0.7852)  loss_riou_3: 0.0004 (0.0006)  loss_vfl_4: 0.0227 (0.0213)  loss_bbox_4: 0.7434 (0.7853)  loss_riou_4: 0.0004 (0.0006)  loss_vfl_enc_0: 0.0224 (0.0213)  loss_bbox_enc_0: 0.7464 (0.7840)  loss_riou_enc_0: 0.0004 (0.0006)  loss_vfl_pre: 0.0226 (0.0222)  loss_bbox_pre: 0.7431 (0.7836)  loss_riou_pre: 0.0005 (0.0006)  time: 0.9866  data: 0.0001  max mem: 20858
+Epoch: [2/160]  [300/997]  eta: 0:12:12  lr: 0.000040  loss: 6.3359 (6.4710)  loss_vfl: 0.0166 (0.0209)  loss_bbox: 0.7776 (0.7883)  loss_riou: 0.0004 (0.0006)  loss_vfl_0: 0.0163 (0.0202)  loss_bbox_0: 0.7772 (0.7881)  loss_riou_0: 0.0004 (0.0005)  loss_vfl_1: 0.0162 (0.0202)  loss_bbox_1: 0.7757 (0.7878)  loss_riou_1: 0.0004 (0.0005)  loss_vfl_2: 0.0164 (0.0203)  loss_bbox_2: 0.7795 (0.7879)  loss_riou_2: 0.0004 (0.0005)  loss_vfl_3: 0.0162 (0.0204)  loss_bbox_3: 0.7776 (0.7879)  loss_riou_3: 0.0004 (0.0006)  loss_vfl_4: 0.0163 (0.0206)  loss_bbox_4: 0.7776 (0.7882)  loss_riou_4: 0.0004 (0.0006)  loss_vfl_enc_0: 0.0165 (0.0206)  loss_bbox_enc_0: 0.7789 (0.7869)  loss_riou_enc_0: 0.0004 (0.0005)  loss_vfl_pre: 0.0168 (0.0214)  loss_bbox_pre: 0.7774 (0.7868)  loss_riou_pre: 0.0004 (0.0005)  time: 1.1231  data: 0.0003  max mem: 20858
+Epoch: [2/160]  [400/997]  eta: 0:10:18  lr: 0.000040  loss: 6.4565 (6.4645)  loss_vfl: 0.0193 (0.0208)  loss_bbox: 0.7953 (0.7875)  loss_riou: 0.0006 (0.0006)  loss_vfl_0: 0.0191 (0.0202)  loss_bbox_0: 0.7855 (0.7874)  loss_riou_0: 0.0006 (0.0005)  loss_vfl_1: 0.0194 (0.0202)  loss_bbox_1: 0.7947 (0.7870)  loss_riou_1: 0.0006 (0.0005)  loss_vfl_2: 0.0195 (0.0202)  loss_bbox_2: 0.7831 (0.7870)  loss_riou_2: 0.0005 (0.0005)  loss_vfl_3: 0.0192 (0.0204)  loss_bbox_3: 0.7952 (0.7872)  loss_riou_3: 0.0006 (0.0006)  loss_vfl_4: 0.0193 (0.0205)  loss_bbox_4: 0.7958 (0.7874)  loss_riou_4: 0.0006 (0.0006)  loss_vfl_enc_0: 0.0192 (0.0207)  loss_bbox_enc_0: 0.7902 (0.7860)  loss_riou_enc_0: 0.0006 (0.0005)  loss_vfl_pre: 0.0202 (0.0214)  loss_bbox_pre: 0.7944 (0.7861)  loss_riou_pre: 0.0006 (0.0005)  time: 0.9539  data: 0.0001  max mem: 20858
+Epoch: [2/160]  [500/997]  eta: 0:08:32  lr: 0.000040  loss: 6.4357 (6.4410)  loss_vfl: 0.0194 (0.0206)  loss_bbox: 0.7833 (0.7848)  loss_riou: 0.0005 (0.0006)  loss_vfl_0: 0.0186 (0.0201)  loss_bbox_0: 0.7841 (0.7844)  loss_riou_0: 0.0005 (0.0005)  loss_vfl_1: 0.0187 (0.0201)  loss_bbox_1: 0.7839 (0.7841)  loss_riou_1: 0.0005 (0.0005)  loss_vfl_2: 0.0188 (0.0201)  loss_bbox_2: 0.7831 (0.7842)  loss_riou_2: 0.0005 (0.0005)  loss_vfl_3: 0.0191 (0.0203)  loss_bbox_3: 0.7826 (0.7844)  loss_riou_3: 0.0005 (0.0005)  loss_vfl_4: 0.0193 (0.0204)  loss_bbox_4: 0.7832 (0.7847)  loss_riou_4: 0.0005 (0.0006)  loss_vfl_enc_0: 0.0193 (0.0206)  loss_bbox_enc_0: 0.7834 (0.7832)  loss_riou_enc_0: 0.0004 (0.0005)  loss_vfl_pre: 0.0201 (0.0213)  loss_bbox_pre: 0.7834 (0.7833)  loss_riou_pre: 0.0005 (0.0005)  time: 1.0974  data: 0.0002  max mem: 20858
+Epoch: [2/160]  [600/997]  eta: 0:06:49  lr: 0.000040  loss: 6.2333 (6.4251)  loss_vfl: 0.0204 (0.0204)  loss_bbox: 0.7631 (0.7831)  loss_riou: 0.0005 (0.0005)  loss_vfl_0: 0.0200 (0.0199)  loss_bbox_0: 0.7635 (0.7827)  loss_riou_0: 0.0005 (0.0005)  loss_vfl_1: 0.0194 (0.0199)  loss_bbox_1: 0.7637 (0.7823)  loss_riou_1: 0.0005 (0.0005)  loss_vfl_2: 0.0205 (0.0199)  loss_bbox_2: 0.7707 (0.7824)  loss_riou_2: 0.0005 (0.0005)  loss_vfl_3: 0.0202 (0.0201)  loss_bbox_3: 0.7666 (0.7826)  loss_riou_3: 0.0005 (0.0005)  loss_vfl_4: 0.0206 (0.0202)  loss_bbox_4: 0.7623 (0.7829)  loss_riou_4: 0.0005 (0.0005)  loss_vfl_enc_0: 0.0206 (0.0204)  loss_bbox_enc_0: 0.7635 (0.7815)  loss_riou_enc_0: 0.0005 (0.0005)  loss_vfl_pre: 0.0210 (0.0211)  loss_bbox_pre: 0.7652 (0.7816)  loss_riou_pre: 0.0004 (0.0005)  time: 0.9621  data: 0.0001  max mem: 20858
+Epoch: [2/160]  [700/997]  eta: 0:05:02  lr: 0.000040  loss: 6.2407 (6.4341)  loss_vfl: 0.0168 (0.0202)  loss_bbox: 0.7610 (0.7844)  loss_riou: 0.0004 (0.0005)  loss_vfl_0: 0.0166 (0.0198)  loss_bbox_0: 0.7602 (0.7839)  loss_riou_0: 0.0004 (0.0005)  loss_vfl_1: 0.0161 (0.0198)  loss_bbox_1: 0.7603 (0.7835)  loss_riou_1: 0.0004 (0.0005)  loss_vfl_2: 0.0169 (0.0198)  loss_bbox_2: 0.7603 (0.7836)  loss_riou_2: 0.0004 (0.0005)  loss_vfl_3: 0.0167 (0.0199)  loss_bbox_3: 0.7601 (0.7838)  loss_riou_3: 0.0004 (0.0005)  loss_vfl_4: 0.0165 (0.0200)  loss_bbox_4: 0.7606 (0.7841)  loss_riou_4: 0.0004 (0.0005)  loss_vfl_enc_0: 0.0164 (0.0203)  loss_bbox_enc_0: 0.7624 (0.7828)  loss_riou_enc_0: 0.0004 (0.0005)  loss_vfl_pre: 0.0174 (0.0209)  loss_bbox_pre: 0.7597 (0.7829)  loss_riou_pre: 0.0004 (0.0005)  time: 0.8714  data: 0.0001  max mem: 20858
+Epoch: [2/160]  [800/997]  eta: 0:03:17  lr: 0.000040  loss: 6.4870 (6.4305)  loss_vfl: 0.0216 (0.0201)  loss_bbox: 0.7879 (0.7840)  loss_riou: 0.0004 (0.0005)  loss_vfl_0: 0.0208 (0.0197)  loss_bbox_0: 0.7866 (0.7836)  loss_riou_0: 0.0004 (0.0005)  loss_vfl_1: 0.0210 (0.0197)  loss_bbox_1: 0.7889 (0.7832)  loss_riou_1: 0.0005 (0.0005)  loss_vfl_2: 0.0211 (0.0197)  loss_bbox_2: 0.7880 (0.7832)  loss_riou_2: 0.0004 (0.0005)  loss_vfl_3: 0.0216 (0.0198)  loss_bbox_3: 0.7842 (0.7835)  loss_riou_3: 0.0004 (0.0005)  loss_vfl_4: 0.0209 (0.0199)  loss_bbox_4: 0.7826 (0.7837)  loss_riou_4: 0.0004 (0.0005)  loss_vfl_enc_0: 0.0210 (0.0202)  loss_bbox_enc_0: 0.7870 (0.7825)  loss_riou_enc_0: 0.0004 (0.0005)  loss_vfl_pre: 0.0216 (0.0208)  loss_bbox_pre: 0.7847 (0.7826)  loss_riou_pre: 0.0004 (0.0005)  time: 0.8763  data: 0.0001  max mem: 20858
+Epoch: [2/160]  [900/997]  eta: 0:01:36  lr: 0.000040  loss: 6.1034 (6.4339)  loss_vfl: 0.0184 (0.0199)  loss_bbox: 0.7453 (0.7846)  loss_riou: 0.0004 (0.0005)  loss_vfl_0: 0.0182 (0.0195)  loss_bbox_0: 0.7456 (0.7843)  loss_riou_0: 0.0004 (0.0005)  loss_vfl_1: 0.0184 (0.0195)  loss_bbox_1: 0.7463 (0.7838)  loss_riou_1: 0.0004 (0.0005)  loss_vfl_2: 0.0183 (0.0195)  loss_bbox_2: 0.7406 (0.7839)  loss_riou_2: 0.0004 (0.0005)  loss_vfl_3: 0.0185 (0.0197)  loss_bbox_3: 0.7452 (0.7841)  loss_riou_3: 0.0004 (0.0005)  loss_vfl_4: 0.0187 (0.0198)  loss_bbox_4: 0.7457 (0.7844)  loss_riou_4: 0.0004 (0.0005)  loss_vfl_enc_0: 0.0177 (0.0199)  loss_bbox_enc_0: 0.7454 (0.7831)  loss_riou_enc_0: 0.0004 (0.0005)  loss_vfl_pre: 0.0189 (0.0205)  loss_bbox_pre: 0.7453 (0.7832)  loss_riou_pre: 0.0004 (0.0005)  time: 0.9068  data: 0.0002  max mem: 20858
+Epoch: [2/160]  [996/997]  eta: 0:00:00  lr: 0.000040  loss: 6.2153 (6.4319)  loss_vfl: 0.0153 (0.0198)  loss_bbox: 0.7613 (0.7845)  loss_riou: 0.0004 (0.0005)  loss_vfl_0: 0.0148 (0.0193)  loss_bbox_0: 0.7602 (0.7842)  loss_riou_0: 0.0004 (0.0005)  loss_vfl_1: 0.0138 (0.0193)  loss_bbox_1: 0.7607 (0.7838)  loss_riou_1: 0.0004 (0.0005)  loss_vfl_2: 0.0141 (0.0194)  loss_bbox_2: 0.7609 (0.7838)  loss_riou_2: 0.0004 (0.0005)  loss_vfl_3: 0.0143 (0.0195)  loss_bbox_3: 0.7611 (0.7840)  loss_riou_3: 0.0004 (0.0005)  loss_vfl_4: 0.0146 (0.0196)  loss_bbox_4: 0.7611 (0.7842)  loss_riou_4: 0.0004 (0.0005)  loss_vfl_enc_0: 0.0154 (0.0198)  loss_bbox_enc_0: 0.7623 (0.7830)  loss_riou_enc_0: 0.0004 (0.0005)  loss_vfl_pre: 0.0163 (0.0203)  loss_bbox_pre: 0.7613 (0.7831)  loss_riou_pre: 0.0004 (0.0005)  time: 0.8730  data: 0.0001  max mem: 20858
+Epoch: [2/160] Total time: 0:16:25 (0.9883 s / it)
+Averaged stats: lr: 0.000040  loss: 6.2153 (6.4319)  loss_vfl: 0.0153 (0.0198)  loss_bbox: 0.7613 (0.7845)  loss_riou: 0.0004 (0.0005)  loss_vfl_0: 0.0148 (0.0193)  loss_bbox_0: 0.7602 (0.7842)  loss_riou_0: 0.0004 (0.0005)  loss_vfl_1: 0.0138 (0.0193)  loss_bbox_1: 0.7607 (0.7838)  loss_riou_1: 0.0004 (0.0005)  loss_vfl_2: 0.0141 (0.0194)  loss_bbox_2: 0.7609 (0.7838)  loss_riou_2: 0.0004 (0.0005)  loss_vfl_3: 0.0143 (0.0195)  loss_bbox_3: 0.7611 (0.7840)  loss_riou_3: 0.0004 (0.0005)  loss_vfl_4: 0.0146 (0.0196)  loss_bbox_4: 0.7611 (0.7842)  loss_riou_4: 0.0004 (0.0005)  loss_vfl_enc_0: 0.0154 (0.0198)  loss_bbox_enc_0: 0.7623 (0.7830)  loss_riou_enc_0: 0.0004 (0.0005)  loss_vfl_pre: 0.0163 (0.0203)  loss_bbox_pre: 0.7613 (0.7831)  loss_riou_pre: 0.0004 (0.0005)
+Skip evaluation at epoch 2. Next evaluation epoch: 4
+Epoch: [3/160]  [  0/997]  eta: 1:45:09  lr: 0.000040  loss: 5.4771 (5.4771)  loss_vfl: 0.0133 (0.0133)  loss_bbox: 0.6769 (0.6769)  loss_riou: 0.0005 (0.0005)  loss_vfl_0: 0.0128 (0.0128)  loss_bbox_0: 0.6646 (0.6646)  loss_riou_0: 0.0004 (0.0004)  loss_vfl_1: 0.0130 (0.0130)  loss_bbox_1: 0.6766 (0.6766)  loss_riou_1: 0.0005 (0.0005)  loss_vfl_2: 0.0130 (0.0130)  loss_bbox_2: 0.6769 (0.6769)  loss_riou_2: 0.0005 (0.0005)  loss_vfl_3: 0.0135 (0.0135)  loss_bbox_3: 0.6661 (0.6661)  loss_riou_3: 0.0004 (0.0004)  loss_vfl_4: 0.0134 (0.0134)  loss_bbox_4: 0.6762 (0.6762)  loss_riou_4: 0.0005 (0.0005)  loss_vfl_enc_0: 0.0131 (0.0131)  loss_bbox_enc_0: 0.6659 (0.6659)  loss_riou_enc_0: 0.0004 (0.0004)  loss_vfl_pre: 0.0137 (0.0137)  loss_bbox_pre: 0.6646 (0.6646)  loss_riou_pre: 0.0004 (0.0004)  time: 6.3283  data: 4.5198  max mem: 20858
+Epoch: [3/160]  [100/997]  eta: 0:16:49  lr: 0.000040  loss: 6.4715 (6.4287)  loss_vfl: 0.0161 (0.0173)  loss_bbox: 0.7853 (0.7866)  loss_riou: 0.0005 (0.0005)  loss_vfl_0: 0.0154 (0.0171)  loss_bbox_0: 0.7850 (0.7859)  loss_riou_0: 0.0005 (0.0005)  loss_vfl_1: 0.0150 (0.0170)  loss_bbox_1: 0.7852 (0.7858)  loss_riou_1: 0.0005 (0.0005)  loss_vfl_2: 0.0158 (0.0170)  loss_bbox_2: 0.7845 (0.7857)  loss_riou_2: 0.0005 (0.0005)  loss_vfl_3: 0.0153 (0.0171)  loss_bbox_3: 0.7851 (0.7864)  loss_riou_3: 0.0005 (0.0005)  loss_vfl_4: 0.0162 (0.0172)  loss_bbox_4: 0.7850 (0.7863)  loss_riou_4: 0.0005 (0.0005)  loss_vfl_enc_0: 0.0163 (0.0174)  loss_bbox_enc_0: 0.7843 (0.7849)  loss_riou_enc_0: 0.0005 (0.0005)  loss_vfl_pre: 0.0163 (0.0178)  loss_bbox_pre: 0.7841 (0.7850)  loss_riou_pre: 0.0005 (0.0005)  time: 1.0250  data: 0.0002  max mem: 20858
+Epoch: [3/160]  [200/997]  eta: 0:14:06  lr: 0.000040  loss: 6.3587 (6.4192)  loss_vfl: 0.0166 (0.0173)  loss_bbox: 0.7707 (0.7855)  loss_riou: 0.0005 (0.0005)  loss_vfl_0: 0.0155 (0.0171)  loss_bbox_0: 0.7727 (0.7845)  loss_riou_0: 0.0005 (0.0005)  loss_vfl_1: 0.0155 (0.0171)  loss_bbox_1: 0.7729 (0.7846)  loss_riou_1: 0.0005 (0.0005)  loss_vfl_2: 0.0157 (0.0170)  loss_bbox_2: 0.7726 (0.7846)  loss_riou_2: 0.0005 (0.0005)  loss_vfl_3: 0.0167 (0.0171)  loss_bbox_3: 0.7733 (0.7851)  loss_riou_3: 0.0005 (0.0005)  loss_vfl_4: 0.0165 (0.0172)  loss_bbox_4: 0.7728 (0.7851)  loss_riou_4: 0.0005 (0.0005)  loss_vfl_enc_0: 0.0165 (0.0176)  loss_bbox_enc_0: 0.7709 (0.7836)  loss_riou_enc_0: 0.0005 (0.0005)  loss_vfl_pre: 0.0167 (0.0179)  loss_bbox_pre: 0.7718 (0.7836)  loss_riou_pre: 0.0005 (0.0005)  time: 0.9213  data: 0.0001  max mem: 20858
+Epoch: [3/160]  [300/997]  eta: 0:12:03  lr: 0.000040  loss: 6.6161 (6.4514)  loss_vfl: 0.0166 (0.0173)  loss_bbox: 0.8103 (0.7896)  loss_riou: 0.0004 (0.0005)  loss_vfl_0: 0.0166 (0.0171)  loss_bbox_0: 0.8090 (0.7888)  loss_riou_0: 0.0005 (0.0005)  loss_vfl_1: 0.0163 (0.0171)  loss_bbox_1: 0.8093 (0.7884)  loss_riou_1: 0.0005 (0.0005)  loss_vfl_2: 0.0165 (0.0170)  loss_bbox_2: 0.8088 (0.7886)  loss_riou_2: 0.0005 (0.0005)  loss_vfl_3: 0.0166 (0.0171)  loss_bbox_3: 0.8086 (0.7890)  loss_riou_3: 0.0005 (0.0005)  loss_vfl_4: 0.0165 (0.0172)  loss_bbox_4: 0.8087 (0.7893)  loss_riou_4: 0.0005 (0.0005)  loss_vfl_enc_0: 0.0174 (0.0175)  loss_bbox_enc_0: 0.8083 (0.7877)  loss_riou_enc_0: 0.0005 (0.0005)  loss_vfl_pre: 0.0177 (0.0179)  loss_bbox_pre: 0.8083 (0.7876)  loss_riou_pre: 0.0005 (0.0005)  time: 1.1169  data: 0.0003  max mem: 20858
+Epoch: [3/160]  [400/997]  eta: 0:10:14  lr: 0.000040  loss: 6.5106 (6.4344)  loss_vfl: 0.0167 (0.0172)  loss_bbox: 0.8034 (0.7875)  loss_riou: 0.0005 (0.0005)  loss_vfl_0: 0.0161 (0.0170)  loss_bbox_0: 0.8050 (0.7868)  loss_riou_0: 0.0004 (0.0005)  loss_vfl_1: 0.0155 (0.0170)  loss_bbox_1: 0.8050 (0.7863)  loss_riou_1: 0.0004 (0.0005)  loss_vfl_2: 0.0158 (0.0170)  loss_bbox_2: 0.8059 (0.7865)  loss_riou_2: 0.0004 (0.0005)  loss_vfl_3: 0.0164 (0.0171)  loss_bbox_3: 0.8052 (0.7869)  loss_riou_3: 0.0005 (0.0005)  loss_vfl_4: 0.0162 (0.0171)  loss_bbox_4: 0.8047 (0.7872)  loss_riou_4: 0.0005 (0.0005)  loss_vfl_enc_0: 0.0165 (0.0175)  loss_bbox_enc_0: 0.8063 (0.7857)  loss_riou_enc_0: 0.0004 (0.0005)  loss_vfl_pre: 0.0168 (0.0178)  loss_bbox_pre: 0.8024 (0.7857)  loss_riou_pre: 0.0005 (0.0005)  time: 0.9217  data: 0.0001  max mem: 20858
+Epoch: [3/160]  [500/997]  eta: 0:08:31  lr: 0.000040  loss: 6.5647 (6.4172)  loss_vfl: 0.0173 (0.0174)  loss_bbox: 0.8059 (0.7851)  loss_riou: 0.0004 (0.0005)  loss_vfl_0: 0.0161 (0.0172)  loss_bbox_0: 0.8045 (0.7844)  loss_riou_0: 0.0005 (0.0005)  loss_vfl_1: 0.0169 (0.0172)  loss_bbox_1: 0.7993 (0.7839)  loss_riou_1: 0.0004 (0.0005)  loss_vfl_2: 0.0175 (0.0172)  loss_bbox_2: 0.8057 (0.7842)  loss_riou_2: 0.0005 (0.0005)  loss_vfl_3: 0.0171 (0.0173)  loss_bbox_3: 0.8056 (0.7845)  loss_riou_3: 0.0005 (0.0005)  loss_vfl_4: 0.0172 (0.0173)  loss_bbox_4: 0.8058 (0.7848)  loss_riou_4: 0.0005 (0.0005)  loss_vfl_enc_0: 0.0176 (0.0176)  loss_bbox_enc_0: 0.8031 (0.7835)  loss_riou_enc_0: 0.0004 (0.0005)  loss_vfl_pre: 0.0178 (0.0179)  loss_bbox_pre: 0.8026 (0.7835)  loss_riou_pre: 0.0004 (0.0005)  time: 1.1260  data: 0.0002  max mem: 20858
+Epoch: [3/160]  [600/997]  eta: 0:06:47  lr: 0.000040  loss: 6.8821 (6.4204)  loss_vfl: 0.0160 (0.0176)  loss_bbox: 0.8470 (0.7854)  loss_riou: 0.0006 (0.0005)  loss_vfl_0: 0.0152 (0.0173)  loss_bbox_0: 0.8443 (0.7847)  loss_riou_0: 0.0006 (0.0005)  loss_vfl_1: 0.0162 (0.0173)  loss_bbox_1: 0.8381 (0.7842)  loss_riou_1: 0.0006 (0.0005)  loss_vfl_2: 0.0155 (0.0173)  loss_bbox_2: 0.8393 (0.7845)  loss_riou_2: 0.0006 (0.0005)  loss_vfl_3: 0.0156 (0.0174)  loss_bbox_3: 0.8423 (0.7847)  loss_riou_3: 0.0006 (0.0005)  loss_vfl_4: 0.0159 (0.0175)  loss_bbox_4: 0.8471 (0.7850)  loss_riou_4: 0.0006 (0.0005)  loss_vfl_enc_0: 0.0159 (0.0177)  loss_bbox_enc_0: 0.8464 (0.7838)  loss_riou_enc_0: 0.0006 (0.0005)  loss_vfl_pre: 0.0168 (0.0180)  loss_bbox_pre: 0.8470 (0.7838)  loss_riou_pre: 0.0005 (0.0005)  time: 0.8776  data: 0.0001  max mem: 20858
+Epoch: [3/160]  [700/997]  eta: 0:05:02  lr: 0.000040  loss: 6.3369 (6.4127)  loss_vfl: 0.0148 (0.0174)  loss_bbox: 0.7774 (0.7847)  loss_riou: 0.0004 (0.0005)  loss_vfl_0: 0.0140 (0.0170)  loss_bbox_0: 0.7787 (0.7841)  loss_riou_0: 0.0004 (0.0005)  loss_vfl_1: 0.0140 (0.0171)  loss_bbox_1: 0.7762 (0.7835)  loss_riou_1: 0.0004 (0.0005)  loss_vfl_2: 0.0138 (0.0171)  loss_bbox_2: 0.7775 (0.7838)  loss_riou_2: 0.0004 (0.0005)  loss_vfl_3: 0.0144 (0.0172)  loss_bbox_3: 0.7773 (0.7840)  loss_riou_3: 0.0004 (0.0005)  loss_vfl_4: 0.0146 (0.0173)  loss_bbox_4: 0.7770 (0.7843)  loss_riou_4: 0.0004 (0.0005)  loss_vfl_enc_0: 0.0142 (0.0174)  loss_bbox_enc_0: 0.7841 (0.7831)  loss_riou_enc_0: 0.0004 (0.0005)  loss_vfl_pre: 0.0147 (0.0177)  loss_bbox_pre: 0.7846 (0.7831)  loss_riou_pre: 0.0004 (0.0005)  time: 1.0087  data: 0.0001  max mem: 20858
+Epoch: [3/160]  [800/997]  eta: 0:03:20  lr: 0.000040  loss: 5.8725 (6.3924)  loss_vfl: 0.0159 (0.0172)  loss_bbox: 0.7227 (0.7822)  loss_riou: 0.0004 (0.0005)  loss_vfl_0: 0.0159 (0.0169)  loss_bbox_0: 0.7248 (0.7817)  loss_riou_0: 0.0004 (0.0005)  loss_vfl_1: 0.0158 (0.0169)  loss_bbox_1: 0.7226 (0.7811)  loss_riou_1: 0.0004 (0.0005)  loss_vfl_2: 0.0155 (0.0169)  loss_bbox_2: 0.7206 (0.7814)  loss_riou_2: 0.0004 (0.0005)  loss_vfl_3: 0.0157 (0.0170)  loss_bbox_3: 0.7222 (0.7816)  loss_riou_3: 0.0004 (0.0005)  loss_vfl_4: 0.0160 (0.0171)  loss_bbox_4: 0.7216 (0.7819)  loss_riou_4: 0.0004 (0.0005)  loss_vfl_enc_0: 0.0163 (0.0173)  loss_bbox_enc_0: 0.7174 (0.7808)  loss_riou_enc_0: 0.0004 (0.0005)  loss_vfl_pre: 0.0171 (0.0176)  loss_bbox_pre: 0.7190 (0.7807)  loss_riou_pre: 0.0004 (0.0005)  time: 1.2043  data: 0.0002  max mem: 20858
+Epoch: [3/160]  [900/997]  eta: 0:01:38  lr: 0.000040  loss: 6.2669 (6.3802)  loss_vfl: 0.0154 (0.0171)  loss_bbox: 0.7800 (0.7808)  loss_riou: 0.0004 (0.0005)  loss_vfl_0: 0.0151 (0.0168)  loss_bbox_0: 0.7723 (0.7803)  loss_riou_0: 0.0004 (0.0005)  loss_vfl_1: 0.0152 (0.0168)  loss_bbox_1: 0.7721 (0.7797)  loss_riou_1: 0.0004 (0.0005)  loss_vfl_2: 0.0151 (0.0168)  loss_bbox_2: 0.7718 (0.7800)  loss_riou_2: 0.0004 (0.0005)  loss_vfl_3: 0.0152 (0.0169)  loss_bbox_3: 0.7712 (0.7802)  loss_riou_3: 0.0004 (0.0005)  loss_vfl_4: 0.0152 (0.0170)  loss_bbox_4: 0.7712 (0.7804)  loss_riou_4: 0.0004 (0.0005)  loss_vfl_enc_0: 0.0154 (0.0172)  loss_bbox_enc_0: 0.7737 (0.7794)  loss_riou_enc_0: 0.0005 (0.0005)  loss_vfl_pre: 0.0162 (0.0175)  loss_bbox_pre: 0.7719 (0.7794)  loss_riou_pre: 0.0004 (0.0005)  time: 0.9098  data: 0.0002  max mem: 20858
+Epoch: [3/160]  [996/997]  eta: 0:00:01  lr: 0.000040  loss: 6.3590 (6.3912)  loss_vfl: 0.0181 (0.0171)  loss_bbox: 0.7838 (0.7821)  loss_riou: 0.0004 (0.0005)  loss_vfl_0: 0.0150 (0.0168)  loss_bbox_0: 0.7853 (0.7816)  loss_riou_0: 0.0004 (0.0005)  loss_vfl_1: 0.0173 (0.0168)  loss_bbox_1: 0.7834 (0.7811)  loss_riou_1: 0.0004 (0.0005)  loss_vfl_2: 0.0172 (0.0168)  loss_bbox_2: 0.7847 (0.7814)  loss_riou_2: 0.0004 (0.0005)  loss_vfl_3: 0.0177 (0.0169)  loss_bbox_3: 0.7837 (0.7815)  loss_riou_3: 0.0004 (0.0005)  loss_vfl_4: 0.0179 (0.0170)  loss_bbox_4: 0.7858 (0.7818)  loss_riou_4: 0.0004 (0.0005)  loss_vfl_enc_0: 0.0145 (0.0171)  loss_bbox_enc_0: 0.7813 (0.7808)  loss_riou_enc_0: 0.0004 (0.0005)  loss_vfl_pre: 0.0159 (0.0174)  loss_bbox_pre: 0.7840 (0.7807)  loss_riou_pre: 0.0004 (0.0005)  time: 0.7941  data: 0.0001  max mem: 20858
+Epoch: [3/160] Total time: 0:16:39 (1.0024 s / it)
+Averaged stats: lr: 0.000040  loss: 6.3590 (6.3912)  loss_vfl: 0.0181 (0.0171)  loss_bbox: 0.7838 (0.7821)  loss_riou: 0.0004 (0.0005)  loss_vfl_0: 0.0150 (0.0168)  loss_bbox_0: 0.7853 (0.7816)  loss_riou_0: 0.0004 (0.0005)  loss_vfl_1: 0.0173 (0.0168)  loss_bbox_1: 0.7834 (0.7811)  loss_riou_1: 0.0004 (0.0005)  loss_vfl_2: 0.0172 (0.0168)  loss_bbox_2: 0.7847 (0.7814)  loss_riou_2: 0.0004 (0.0005)  loss_vfl_3: 0.0177 (0.0169)  loss_bbox_3: 0.7837 (0.7815)  loss_riou_3: 0.0004 (0.0005)  loss_vfl_4: 0.0179 (0.0170)  loss_bbox_4: 0.7858 (0.7818)  loss_riou_4: 0.0004 (0.0005)  loss_vfl_enc_0: 0.0145 (0.0171)  loss_bbox_enc_0: 0.7813 (0.7808)  loss_riou_enc_0: 0.0004 (0.0005)  loss_vfl_pre: 0.0159 (0.0174)  loss_bbox_pre: 0.7840 (0.7807)  loss_riou_pre: 0.0004 (0.0005)
+Skip evaluation at epoch 3. Next evaluation epoch: 4
+Epoch: [4/160]  [  0/997]  eta: 1:17:53  lr: 0.000040  loss: 5.8806 (5.8806)  loss_vfl: 0.0092 (0.0092)  loss_bbox: 0.7258 (0.7258)  loss_riou: 0.0003 (0.0003)  loss_vfl_0: 0.0084 (0.0084)  loss_bbox_0: 0.7273 (0.7273)  loss_riou_0: 0.0003 (0.0003)  loss_vfl_1: 0.0090 (0.0090)  loss_bbox_1: 0.7264 (0.7264)  loss_riou_1: 0.0003 (0.0003)  loss_vfl_2: 0.0090 (0.0090)  loss_bbox_2: 0.7265 (0.7265)  loss_riou_2: 0.0003 (0.0003)  loss_vfl_3: 0.0091 (0.0091)  loss_bbox_3: 0.7263 (0.7263)  loss_riou_3: 0.0003 (0.0003)  loss_vfl_4: 0.0090 (0.0090)  loss_bbox_4: 0.7260 (0.7260)  loss_riou_4: 0.0003 (0.0003)  loss_vfl_enc_0: 0.0084 (0.0084)  loss_bbox_enc_0: 0.7247 (0.7247)  loss_riou_enc_0: 0.0003 (0.0003)  loss_vfl_pre: 0.0085 (0.0085)  loss_bbox_pre: 0.7250 (0.7250)  loss_riou_pre: 0.0003 (0.0003)  time: 4.6874  data: 3.2360  max mem: 20858
+Epoch: [4/160]  [100/997]  eta: 0:15:59  lr: 0.000040  loss: 6.3565 (6.3989)  loss_vfl: 0.0141 (0.0172)  loss_bbox: 0.7823 (0.7836)  loss_riou: 0.0004 (0.0005)  loss_vfl_0: 0.0150 (0.0168)  loss_bbox_0: 0.7809 (0.7819)  loss_riou_0: 0.0004 (0.0005)  loss_vfl_1: 0.0148 (0.0169)  loss_bbox_1: 0.7853 (0.7820)  loss_riou_1: 0.0004 (0.0005)  loss_vfl_2: 0.0139 (0.0168)  loss_bbox_2: 0.7829 (0.7825)  loss_riou_2: 0.0004 (0.0005)  loss_vfl_3: 0.0146 (0.0170)  loss_bbox_3: 0.7819 (0.7830)  loss_riou_3: 0.0005 (0.0005)  loss_vfl_4: 0.0143 (0.0171)  loss_bbox_4: 0.7817 (0.7829)  loss_riou_4: 0.0004 (0.0005)  loss_vfl_enc_0: 0.0152 (0.0171)  loss_bbox_enc_0: 0.7798 (0.7817)  loss_riou_enc_0: 0.0004 (0.0005)  loss_vfl_pre: 0.0151 (0.0172)  loss_bbox_pre: 0.7815 (0.7813)  loss_riou_pre: 0.0004 (0.0005)  time: 0.9970  data: 0.0001  max mem: 20858
+Epoch: [4/160]  [200/997]  eta: 0:13:42  lr: 0.000040  loss: 6.6326 (6.4048)  loss_vfl: 0.0142 (0.0165)  loss_bbox: 0.8132 (0.7845)  loss_riou: 0.0004 (0.0005)  loss_vfl_0: 0.0139 (0.0162)  loss_bbox_0: 0.8154 (0.7836)  loss_riou_0: 0.0004 (0.0005)  loss_vfl_1: 0.0138 (0.0161)  loss_bbox_1: 0.8124 (0.7836)  loss_riou_1: 0.0004 (0.0005)  loss_vfl_2: 0.0138 (0.0161)  loss_bbox_2: 0.8144 (0.7839)  loss_riou_2: 0.0004 (0.0005)  loss_vfl_3: 0.0143 (0.0162)  loss_bbox_3: 0.8132 (0.7842)  loss_riou_3: 0.0004 (0.0005)  loss_vfl_4: 0.0143 (0.0164)  loss_bbox_4: 0.8148 (0.7843)  loss_riou_4: 0.0004 (0.0005)  loss_vfl_enc_0: 0.0141 (0.0165)  loss_bbox_enc_0: 0.8113 (0.7833)  loss_riou_enc_0: 0.0004 (0.0005)  loss_vfl_pre: 0.0145 (0.0167)  loss_bbox_pre: 0.8110 (0.7830)  loss_riou_pre: 0.0004 (0.0005)  time: 1.0207  data: 0.0002  max mem: 20858
+Epoch: [4/160]  [300/997]  eta: 0:11:44  lr: 0.000040  loss: 5.8690 (6.3763)  loss_vfl: 0.0145 (0.0162)  loss_bbox: 0.7288 (0.7811)  loss_riou: 0.0005 (0.0005)  loss_vfl_0: 0.0142 (0.0160)  loss_bbox_0: 0.7217 (0.7803)  loss_riou_0: 0.0005 (0.0005)  loss_vfl_1: 0.0141 (0.0159)  loss_bbox_1: 0.7215 (0.7803)  loss_riou_1: 0.0005 (0.0005)  loss_vfl_2: 0.0138 (0.0158)  loss_bbox_2: 0.7294 (0.7806)  loss_riou_2: 0.0005 (0.0005)  loss_vfl_3: 0.0142 (0.0159)  loss_bbox_3: 0.7215 (0.7808)  loss_riou_3: 0.0005 (0.0005)  loss_vfl_4: 0.0142 (0.0161)  loss_bbox_4: 0.7227 (0.7809)  loss_riou_4: 0.0005 (0.0005)  loss_vfl_enc_0: 0.0148 (0.0163)  loss_bbox_enc_0: 0.7175 (0.7799)  loss_riou_enc_0: 0.0005 (0.0005)  loss_vfl_pre: 0.0153 (0.0165)  loss_bbox_pre: 0.7200 (0.7798)  loss_riou_pre: 0.0005 (0.0005)  time: 0.9022  data: 0.0002  max mem: 20858
+Epoch: [4/160]  [400/997]  eta: 0:10:05  lr: 0.000040  loss: 6.2613 (6.3657)  loss_vfl: 0.0154 (0.0163)  loss_bbox: 0.7681 (0.7797)  loss_riou: 0.0004 (0.0005)  loss_vfl_0: 0.0143 (0.0160)  loss_bbox_0: 0.7621 (0.7790)  loss_riou_0: 0.0004 (0.0005)  loss_vfl_1: 0.0148 (0.0160)  loss_bbox_1: 0.7623 (0.7789)  loss_riou_1: 0.0004 (0.0005)  loss_vfl_2: 0.0153 (0.0159)  loss_bbox_2: 0.7612 (0.7792)  loss_riou_2: 0.0004 (0.0005)  loss_vfl_3: 0.0151 (0.0160)  loss_bbox_3: 0.7639 (0.7794)  loss_riou_3: 0.0004 (0.0005)  loss_vfl_4: 0.0156 (0.0162)  loss_bbox_4: 0.7626 (0.7796)  loss_riou_4: 0.0004 (0.0005)  loss_vfl_enc_0: 0.0145 (0.0164)  loss_bbox_enc_0: 0.7623 (0.7784)  loss_riou_enc_0: 0.0004 (0.0005)  loss_vfl_pre: 0.0154 (0.0166)  loss_bbox_pre: 0.7649 (0.7784)  loss_riou_pre: 0.0004 (0.0005)  time: 0.9074  data: 0.0001  max mem: 20858
+Epoch: [4/160]  [500/997]  eta: 0:08:16  lr: 0.000040  loss: 5.8719 (6.3817)  loss_vfl: 0.0131 (0.0165)  loss_bbox: 0.7155 (0.7815)  loss_riou: 0.0004 (0.0005)  loss_vfl_0: 0.0126 (0.0162)  loss_bbox_0: 0.7154 (0.7808)  loss_riou_0: 0.0004 (0.0005)  loss_vfl_1: 0.0127 (0.0162)  loss_bbox_1: 0.7161 (0.7806)  loss_riou_1: 0.0004 (0.0005)  loss_vfl_2: 0.0125 (0.0162)  loss_bbox_2: 0.7154 (0.7809)  loss_riou_2: 0.0004 (0.0005)  loss_vfl_3: 0.0129 (0.0163)  loss_bbox_3: 0.7155 (0.7811)  loss_riou_3: 0.0004 (0.0005)  loss_vfl_4: 0.0132 (0.0164)  loss_bbox_4: 0.7149 (0.7813)  loss_riou_4: 0.0004 (0.0005)  loss_vfl_enc_0: 0.0134 (0.0166)  loss_bbox_enc_0: 0.7158 (0.7803)  loss_riou_enc_0: 0.0004 (0.0005)  loss_vfl_pre: 0.0134 (0.0168)  loss_bbox_pre: 0.7145 (0.7802)  loss_riou_pre: 0.0004 (0.0005)  time: 0.9562  data: 0.0001  max mem: 20858
+Epoch: [4/160]  [600/997]  eta: 0:06:32  lr: 0.000040  loss: 6.2566 (6.3747)  loss_vfl: 0.0165 (0.0163)  loss_bbox: 0.7675 (0.7808)  loss_riou: 0.0004 (0.0005)  loss_vfl_0: 0.0156 (0.0160)  loss_bbox_0: 0.7695 (0.7800)  loss_riou_0: 0.0004 (0.0005)  loss_vfl_1: 0.0159 (0.0160)  loss_bbox_1: 0.7678 (0.7800)  loss_riou_1: 0.0004 (0.0005)  loss_vfl_2: 0.0158 (0.0159)  loss_bbox_2: 0.7686 (0.7803)  loss_riou_2: 0.0004 (0.0005)  loss_vfl_3: 0.0159 (0.0160)  loss_bbox_3: 0.7685 (0.7805)  loss_riou_3: 0.0004 (0.0005)  loss_vfl_4: 0.0161 (0.0162)  loss_bbox_4: 0.7675 (0.7807)  loss_riou_4: 0.0004 (0.0005)  loss_vfl_enc_0: 0.0156 (0.0163)  loss_bbox_enc_0: 0.7694 (0.7795)  loss_riou_enc_0: 0.0004 (0.0005)  loss_vfl_pre: 0.0159 (0.0165)  loss_bbox_pre: 0.7687 (0.7795)  loss_riou_pre: 0.0004 (0.0005)  time: 0.9760  data: 0.0001  max mem: 20858
+Epoch: [4/160]  [700/997]  eta: 0:04:57  lr: 0.000040  loss: 6.2301 (6.3517)  loss_vfl: 0.0142 (0.0162)  loss_bbox: 0.7558 (0.7781)  loss_riou: 0.0005 (0.0005)  loss_vfl_0: 0.0137 (0.0160)  loss_bbox_0: 0.7606 (0.7772)  loss_riou_0: 0.0005 (0.0005)  loss_vfl_1: 0.0134 (0.0159)  loss_bbox_1: 0.7527 (0.7771)  loss_riou_1: 0.0004 (0.0005)  loss_vfl_2: 0.0136 (0.0159)  loss_bbox_2: 0.7594 (0.7774)  loss_riou_2: 0.0005 (0.0005)  loss_vfl_3: 0.0138 (0.0160)  loss_bbox_3: 0.7559 (0.7777)  loss_riou_3: 0.0005 (0.0005)  loss_vfl_4: 0.0138 (0.0161)  loss_bbox_4: 0.7589 (0.7779)  loss_riou_4: 0.0005 (0.0005)  loss_vfl_enc_0: 0.0137 (0.0163)  loss_bbox_enc_0: 0.7596 (0.7768)  loss_riou_enc_0: 0.0005 (0.0005)  loss_vfl_pre: 0.0141 (0.0165)  loss_bbox_pre: 0.7540 (0.7767)  loss_riou_pre: 0.0005 (0.0005)  time: 1.0791  data: 0.0002  max mem: 20858
+Epoch: [4/160]  [800/997]  eta: 0:03:17  lr: 0.000040  loss: 6.3278 (6.3663)  loss_vfl: 0.0143 (0.0162)  loss_bbox: 0.7723 (0.7799)  loss_riou: 0.0003 (0.0005)  loss_vfl_0: 0.0137 (0.0159)  loss_bbox_0: 0.7728 (0.7791)  loss_riou_0: 0.0003 (0.0005)  loss_vfl_1: 0.0139 (0.0159)  loss_bbox_1: 0.7702 (0.7789)  loss_riou_1: 0.0003 (0.0005)  loss_vfl_2: 0.0138 (0.0159)  loss_bbox_2: 0.7721 (0.7793)  loss_riou_2: 0.0003 (0.0005)  loss_vfl_3: 0.0137 (0.0159)  loss_bbox_3: 0.7723 (0.7795)  loss_riou_3: 0.0003 (0.0005)  loss_vfl_4: 0.0139 (0.0161)  loss_bbox_4: 0.7708 (0.7797)  loss_riou_4: 0.0003 (0.0005)  loss_vfl_enc_0: 0.0140 (0.0162)  loss_bbox_enc_0: 0.7736 (0.7788)  loss_riou_enc_0: 0.0003 (0.0005)  loss_vfl_pre: 0.0142 (0.0164)  loss_bbox_pre: 0.7710 (0.7787)  loss_riou_pre: 0.0003 (0.0005)  time: 1.0073  data: 0.0001  max mem: 20858
+tensor([[[nan, nan, nan, nan, nan],
+         [nan, nan, nan, nan, nan],
+         [nan, nan, nan, nan, nan],
+         ...,
+         [nan, nan, nan, nan, nan],
+         [nan, nan, nan, nan, nan],
+         [nan, nan, nan, nan, nan]],
+
+        [[nan, nan, nan, nan, nan],
+         [nan, nan, nan, nan, nan],
+         [nan, nan, nan, nan, nan],
+         ...,
+         [nan, nan, nan, nan, nan],
+         [nan, nan, nan, nan, nan],
+         [nan, nan, nan, nan, nan]],
+
+        [[nan, nan, nan, nan, nan],
+         [nan, nan, nan, nan, nan],
+         [nan, nan, nan, nan, nan],
+         ...,
+         [nan, nan, nan, nan, nan],
+         [nan, nan, nan, nan, nan],
+         [nan, nan, nan, nan, nan]],
+
+        ...,
+
+        [[nan, nan, nan, nan, nan],
+         [nan, nan, nan, nan, nan],
+         [nan, nan, nan, nan, nan],
+         ...,
+         [nan, nan, nan, nan, nan],
+         [nan, nan, nan, nan, nan],
+         [nan, nan, nan, nan, nan]],
+
+        [[nan, nan, nan, nan, nan],
+         [nan, nan, nan, nan, nan],
+         [nan, nan, nan, nan, nan],
+         ...,
+         [nan, nan, nan, nan, nan],
+         [nan, nan, nan, nan, nan],
+         [nan, nan, nan, nan, nan]],
+
+        [[nan, nan, nan, nan, nan],
+         [nan, nan, nan, nan, nan],
+         [nan, nan, nan, nan, nan],
+         ...,
+         [nan, nan, nan, nan, nan],
+         [nan, nan, nan, nan, nan],
+         [nan, nan, nan, nan, nan]]], device='cuda:0', grad_fn=<CatBackward0>)
+Traceback (most recent call last):
+  File "/root/D-FINE/train.py", line 168, in <module>
+    main(args)
+  File "/root/D-FINE/train.py", line 143, in main
+    solver.fit()
+  File "/root/D-FINE/src/solver/det_solver.py", line 137, in fit
+    train_stats = train_one_epoch(
+                  ^^^^^^^^^^^^^^^^
+  File "/root/D-FINE/src/solver/det_engine.py", line 76, in train_one_epoch
+    loss_dict = criterion(outputs, targets, **metas)
+                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/root/miniconda3/envs/dfine/lib/python3.11/site-packages/torch/nn/modules/module.py", line 1518, in _wrapped_call_impl
+    return self._call_impl(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/root/miniconda3/envs/dfine/lib/python3.11/site-packages/torch/nn/modules/module.py", line 1527, in _call_impl
+    return forward_call(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/root/D-FINE/src/zoo/dfine/dfine_criterion.py", line 206, in forward
+    group_losses = self._compute_losses_for_targets(outputs, group_targets, num_boxes)
+                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/root/D-FINE/src/zoo/dfine/dfine_criterion.py", line 155, in _compute_losses_for_targets
+    indices = self._match(outputs_without_aux, targets)
+              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/root/D-FINE/src/zoo/dfine/dfine_criterion.py", line 132, in _match
+    matched = self.matcher(outputs, targets)
+              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/root/miniconda3/envs/dfine/lib/python3.11/site-packages/torch/nn/modules/module.py", line 1518, in _wrapped_call_impl
+    return self._call_impl(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/root/miniconda3/envs/dfine/lib/python3.11/site-packages/torch/nn/modules/module.py", line 1527, in _call_impl
+    return forward_call(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/root/miniconda3/envs/dfine/lib/python3.11/site-packages/torch/utils/_contextlib.py", line 115, in decorate_context
+    return func(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^
+  File "/root/D-FINE/src/zoo/dfine/matcher.py", line 73, in forward
+    indices.append(linear_sum_assignment(C.cpu()))
+                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+ValueError: matrix contains invalid numeric entries

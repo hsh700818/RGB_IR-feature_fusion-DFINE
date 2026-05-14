@@ -134,19 +134,25 @@ class DFINECriterion(nn.Module):
             return matched["indices"]
         return matched
 
-    def forward(self, outputs, targets, **kwargs):
+    def _build_modal_targets(self, targets, box_key, label_key):
+        modal_targets = []
+        for target in targets:
+            if box_key not in target or label_key not in target:
+                return None
+
+            modal_target = target.copy()
+            modal_target["boxes"] = target[box_key]
+            modal_target["labels"] = target[label_key]
+            modal_targets.append(modal_target)
+
+        return modal_targets
+
+    def _sum_target_boxes(self, targets):
+        return sum(len(t["labels"]) for t in targets)
+
+    def _compute_losses_for_targets(self, outputs, targets, num_boxes):
         outputs_without_aux = {k: v for k, v in outputs.items() if "aux" not in k}
         indices = self._match(outputs_without_aux, targets)
-
-        device = next(v for v in outputs.values() if torch.is_tensor(v)).device
-        num_boxes = sum(len(t["labels"]) for t in targets)
-        num_boxes = torch.as_tensor([num_boxes], dtype=torch.float, device=device)
-        if torch.cuda.is_available() and torch.distributed.is_initialized():
-            torch.distributed.all_reduce(num_boxes)
-            world_size = torch.distributed.get_world_size()
-        else:
-            world_size = 1
-        num_boxes = torch.clamp(num_boxes / world_size, min=1).item()
 
         losses = {}
         for loss in self.losses:
@@ -174,5 +180,31 @@ class DFINECriterion(nn.Module):
                 l_dict = self.get_loss(loss, outputs["pre_outputs"], targets, pre_indices, num_boxes)
                 l_dict = {k + "_pre": v for k, v in l_dict.items()}
                 losses.update(l_dict)
+
+        return losses
+
+    def forward(self, outputs, targets, **kwargs):
+        device = next(v for v in outputs.values() if torch.is_tensor(v)).device
+        rgb_targets = self._build_modal_targets(targets, "rgb_boxes", "rgb_labels") or targets
+        ir_targets = self._build_modal_targets(targets, "ir_boxes", "ir_labels")
+
+        supervision_groups = [rgb_targets]
+        if ir_targets is not None:
+            supervision_groups.append(ir_targets)
+
+        num_boxes = sum(self._sum_target_boxes(group) for group in supervision_groups)
+        num_boxes = torch.as_tensor([num_boxes], dtype=torch.float, device=device)
+        if torch.cuda.is_available() and torch.distributed.is_initialized():
+            torch.distributed.all_reduce(num_boxes)
+            world_size = torch.distributed.get_world_size()
+        else:
+            world_size = 1
+        num_boxes = torch.clamp(num_boxes / world_size, min=1).item()
+
+        losses = {}
+        for group_targets in supervision_groups:
+            group_losses = self._compute_losses_for_targets(outputs, group_targets, num_boxes)
+            for key, value in group_losses.items():
+                losses[key] = losses.get(key, 0) + value
 
         return {k: torch.nan_to_num(v, nan=0.0, posinf=0.0, neginf=0.0) for k, v in losses.items()}

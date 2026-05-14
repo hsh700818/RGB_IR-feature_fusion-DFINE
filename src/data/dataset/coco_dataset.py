@@ -1,3 +1,4 @@
+import math
 import os
 import torch
 import torchvision
@@ -314,12 +315,34 @@ class ConvertCocoPolysToMask(object):
     def __init__(self, return_masks=False):
         self.return_masks = return_masks
 
+    @staticmethod
+    def _compute_area(obj):
+        if "area" in obj:
+            return float(obj["area"])
+
+        seg = obj.get("segmentation")
+        if seg and len(seg) > 0 and len(seg[0]) >= 6 and len(seg[0]) % 2 == 0:
+            poly = torch.tensor(seg[0], dtype=torch.float32).view(-1, 2)
+            x = poly[:, 0]
+            y = poly[:, 1]
+            return float(0.5 * torch.abs(torch.dot(x, torch.roll(y, shifts=-1)) - torch.dot(y, torch.roll(x, shifts=-1))))
+
+        bbox = obj.get("bbox")
+        if bbox is not None and len(bbox) >= 4:
+            return float(max(bbox[2], 0.0) * max(bbox[3], 0.0))
+
+        return 0.0
+
     def __call__(self, image, target, **kwargs):
         from ...zoo.dfine.box_ops import poly2rbox # 局部导入打破循环依赖
         
         w, h = (image.size if isinstance(image, Image.Image) else (image.shape[-1], image.shape[-2]))
         image_id = torch.tensor([target["image_id"]])
         anno = [obj for obj in target["annotations"] if "iscrowd" not in obj or obj["iscrowd"] == 0]
+        bbox_angle_in_degrees = any(
+            "bbox" in obj and len(obj["bbox"]) >= 5 and abs(float(obj["bbox"][4])) > math.pi
+            for obj in anno
+        )
 
         boxes = []
         for obj in anno:
@@ -328,7 +351,15 @@ class ConvertCocoPolysToMask(object):
                 boxes.append(poly2rbox(poly)) 
             else:
                 b = obj["bbox"]
-                boxes.append(torch.tensor([b[0]+b[2]/2, b[1]+b[3]/2, b[2], b[3], 0.0]))
+                if len(b) >= 5:
+                    angle = float(b[4])
+                    # Some OBB json files store all angles in degrees. Infer once per image
+                    # so small degree values like -2.0 are not misread as radians.
+                    if bbox_angle_in_degrees:
+                        angle = math.radians(angle)
+                    boxes.append(torch.tensor([b[0], b[1], b[2], b[3], angle], dtype=torch.float32))
+                else:
+                    boxes.append(torch.tensor([b[0] + b[2] / 2, b[1] + b[3] / 2, b[2], b[3], 0.0], dtype=torch.float32))
 
         if len(boxes) > 0:
             boxes = torch.stack(boxes).reshape(-1, 5)
@@ -352,7 +383,7 @@ class ConvertCocoPolysToMask(object):
             "labels": labels[keep], 
             "image_id": image_id, 
             "image_path": target["image_path"],
-            "area": torch.tensor([obj["area"] for obj in anno])[keep], 
+            "area": torch.tensor([self._compute_area(obj) for obj in anno], dtype=torch.float32)[keep], 
             "iscrowd": torch.tensor([obj["iscrowd"] if "iscrowd" in obj else 0 for obj in anno])[keep],
             "orig_size": torch.as_tensor([int(w), int(h)])
         }

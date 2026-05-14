@@ -64,6 +64,39 @@ def get_rotated_vertices(cx, cy, w, h, angle):
     return vertices
 
 
+def _draw_boxes(draw, boxes, labels, orig_w, orig_h, box_fmt, x_offset=0):
+    box_colors = ["red", "blue", "green", "orange", "purple", "cyan", "magenta", "yellow"]
+    if boxes is None or len(boxes) == 0:
+        return
+
+    boxes = boxes.clone()
+    labels = labels if labels is not None else [0] * len(boxes)
+    is_normalized = boxes[:, :4].max() <= 1.01
+
+    for box, label in zip(boxes, labels):
+        box_color = box_colors[int(label) % len(box_colors)]
+
+        if box.shape[-1] == 5:
+            cx, cy, w, h, angle = box.tolist()
+            if is_normalized:
+                cx, w = cx * orig_w, w * orig_w
+                cy, h = cy * orig_h, h * orig_h
+
+            vertices = get_rotated_vertices(cx, cy, w, h, angle)
+            if x_offset != 0:
+                vertices = [(x + x_offset, y) for x, y in vertices]
+            draw.polygon(vertices, outline=box_color, width=3)
+        else:
+            if box_fmt != "xyxy":
+                box = box_convert(box.unsqueeze(0), in_fmt=box_fmt, out_fmt="xyxy").squeeze(0)
+            x0, y0, x1, y1 = box.tolist()
+            if is_normalized:
+                x0, x1 = x0 * orig_w, x1 * orig_w
+                y0, y1 = y0 * orig_h, y1 * orig_h
+
+            draw.rectangle([x0 + x_offset, y0, x1 + x_offset, y1], outline=box_color, width=3)
+
+
 def save_samples(samples: torch.Tensor, targets: List[Dict], output_dir: str, split: str, normalized: bool, box_fmt: str):
     os.makedirs(Path(output_dir) / Path(f"{split}_samples"), exist_ok=True)
 
@@ -78,37 +111,15 @@ def save_samples(samples: torch.Tensor, targets: List[Dict], output_dir: str, sp
         img_pil = to_pil_image(sample_visualization)
         draw = ImageDraw.Draw(img_pil)
 
-        if "boxes" in target and len(target["boxes"]) > 0:
-            boxes = target["boxes"].clone()
-            labels = target.get("labels", [0] * len(boxes))
-            is_normalized = boxes[:, :4].max() <= 1.01
-
-            for box, label in zip(boxes, labels):
-                box_color = box_colors[int(label) % len(box_colors)]
-
-                if box.shape[-1] == 5:
-                    cx, cy, w, h, angle = box.tolist()
-                    if is_normalized:
-                        cx, w = cx * orig_w, w * orig_w
-                        cy, h = cy * orig_h, h * orig_h
-
-                    vertices = get_rotated_vertices(cx, cy, w, h, angle)
-                    draw.polygon(vertices, outline=box_color, width=3)
-
-                    if is_dual:
-                        vertices_ir = [(x + orig_w, y) for x, y in vertices]
-                        draw.polygon(vertices_ir, outline=box_color, width=3)
-                else:
-                    if box_fmt != "xyxy":
-                        box = box_convert(box.unsqueeze(0), in_fmt=box_fmt, out_fmt="xyxy").squeeze(0)
-                    x0, y0, x1, y1 = box.tolist()
-                    if is_normalized:
-                        x0, x1 = x0 * orig_w, x1 * orig_w
-                        y0, y1 = y0 * orig_h, y1 * orig_h
-
-                    draw.rectangle([x0, y0, x1, y1], outline=box_color, width=3)
-                    if is_dual:
-                        draw.rectangle([x0 + orig_w, y0, x1 + orig_w, y1], outline=box_color, width=3)
+        if is_dual:
+            rgb_boxes = target.get("rgb_boxes", target.get("boxes"))
+            rgb_labels = target.get("rgb_labels", target.get("labels"))
+            ir_boxes = target.get("ir_boxes", target.get("boxes"))
+            ir_labels = target.get("ir_labels", target.get("labels"))
+            _draw_boxes(draw, rgb_boxes, rgb_labels, orig_w, orig_h, box_fmt, x_offset=0)
+            _draw_boxes(draw, ir_boxes, ir_labels, orig_w, orig_h, box_fmt, x_offset=orig_w)
+        else:
+            _draw_boxes(draw, target.get("boxes"), target.get("labels"), orig_w, orig_h, box_fmt, x_offset=0)
 
         image_id = target.get("image_id", [i])
         img_id = image_id.item() if isinstance(image_id, torch.Tensor) else i
@@ -131,33 +142,11 @@ def show_sample(sample, normalized=True):
     box_colors = ["red", "blue", "green", "orange", "purple", "cyan", "magenta", "yellow"]
 
     if "boxes" in target and len(target["boxes"]) > 0:
-        boxes = target["boxes"].clone()
-        labels = target.get("labels", [0] * len(boxes))
-        is_normalized = boxes[:, :4].max() <= 1.01
-
-        for box, label in zip(boxes, labels):
-            box_color = box_colors[int(label) % len(box_colors)]
-
-            if box.shape[-1] == 5:
-                cx, cy, w, h, angle = box.tolist()
-                if is_normalized:
-                    cx, w = cx * orig_w, w * orig_w
-                    cy, h = cy * orig_h, h * orig_h
-
-                vertices = get_rotated_vertices(cx, cy, w, h, angle)
-                draw.polygon(vertices, outline=box_color, width=3)
-                if is_dual:
-                    draw.polygon([(x + orig_w, y) for x, y in vertices], outline=box_color, width=3)
-            else:
-                box_xyxy = box_convert(box.unsqueeze(0), in_fmt="cxcywh", out_fmt="xyxy").squeeze(0)
-                x0, y0, x1, y1 = box_xyxy.tolist()
-                if is_normalized:
-                    x0, x1 = x0 * orig_w, x1 * orig_w
-                    y0, y1 = y0 * orig_h, y1 * orig_h
-
-                draw.rectangle([x0, y0, x1, y1], outline=box_color, width=3)
-                if is_dual:
-                    draw.rectangle([x0 + orig_w, y0, x1 + orig_w, y1], outline=box_color, width=3)
+        if is_dual:
+            _draw_boxes(draw, target.get("rgb_boxes", target.get("boxes")), target.get("rgb_labels", target.get("labels")), orig_w, orig_h, "cxcywh", x_offset=0)
+            _draw_boxes(draw, target.get("ir_boxes", target.get("boxes")), target.get("ir_labels", target.get("labels")), orig_w, orig_h, "cxcywh", x_offset=orig_w)
+        else:
+            _draw_boxes(draw, target.get("boxes"), target.get("labels"), orig_w, orig_h, "cxcywh", x_offset=0)
 
     plt.figure(figsize=(16, 8))
     plt.imshow(img_pil)

@@ -40,24 +40,30 @@ class DetSolver(BaseSolver):
     def fit(self):
         self.train()
         args = self.cfg
+        yaml_cfg = getattr(args, "yaml_cfg", {})
         metric_names = ["AP50:95", "AP50", "AP75", "APsmall", "APmedium", "APlarge"]
 
-        eval_freq = int(getattr(args, "eval_freq", 5))
-        eval_freq = max(eval_freq, 1)
-        skip_initial_eval = bool(getattr(args, "skip_initial_eval", True))
+        def _cfg_value(name, default):
+            if isinstance(yaml_cfg, dict) and name in yaml_cfg:
+                return yaml_cfg[name]
+            return getattr(args, name, default)
 
-        primary_metric = getattr(args, "primary_metric", "obb_mAP50")
-        eval_hbb = bool(getattr(args, "eval_hbb", False))
-        eval_obb = bool(getattr(args, "eval_obb", True))
-        eval_obb_max_dets = int(getattr(args, "eval_obb_max_dets", 100))
-        eval_obb_score_thr = float(getattr(args, "eval_obb_score_thr", 0.001))
+        eval_freq = int(_cfg_value("eval_freq", 5))
+        eval_freq = max(eval_freq, 1)
+        skip_initial_eval = bool(_cfg_value("skip_initial_eval", True))
+
+        primary_metric = _cfg_value("primary_metric", "obb_mAP50")
+        eval_hbb = bool(_cfg_value("eval_hbb", False))
+        eval_obb = bool(_cfg_value("eval_obb", True))
+        eval_obb_max_dets = int(_cfg_value("eval_obb_max_dets", 100))
+        eval_obb_score_thr = float(_cfg_value("eval_obb_score_thr", 0.001))
 
         # Early stopping. Patience is counted by validation rounds, not epochs.
         # Example: eval_freq=5 and early_stop_patience=8 means stop after about
         # 40 epochs without meaningful improvement.
-        early_stop_patience = int(getattr(args, "early_stop_patience", 0))
-        early_stop_min_delta = float(getattr(args, "early_stop_min_delta", 0.0))
-        early_stop_start_epoch = int(getattr(args, "early_stop_start_epoch", 0))
+        early_stop_patience = int(_cfg_value("early_stop_patience", 0))
+        early_stop_min_delta = float(_cfg_value("early_stop_min_delta", 0.0))
+        early_stop_start_epoch = int(_cfg_value("early_stop_start_epoch", 0))
         no_improve_evals = 0
 
         if self.use_wandb:

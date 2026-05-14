@@ -84,7 +84,8 @@ DFINECriterion:
 train_dataloader:
   dataset:
     img_folder: /root/autodl-tmp/DroneVehicle/train/trainimg
-    ann_file: /root/autodl-tmp/DroneVehicle/instances_train.json
+    ann_file: /root/autodl-tmp/DroneVehicle/annotations_OBB/train_rgb_obb.json
+    ann_file_ir: /root/autodl-tmp/DroneVehicle/annotations_OBB/train_ir_obb.json
     return_masks: False
     transforms:
       ops:
@@ -106,7 +107,8 @@ train_dataloader:
 val_dataloader:
   dataset:
     img_folder: /root/autodl-tmp/DroneVehicle/val/valimg
-    ann_file: /root/autodl-tmp/DroneVehicle/instances_val.json
+    ann_file: /root/autodl-tmp/DroneVehicle/annotations_OBB/val_rgb_obb.json
+    ann_file_ir: /root/autodl-tmp/DroneVehicle/annotations_OBB/val_ir_obb.json
     transforms:
       ops:
         - {type: Resize, size: [640, 640]}
