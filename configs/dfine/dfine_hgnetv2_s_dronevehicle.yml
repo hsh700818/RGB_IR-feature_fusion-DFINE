@@ -24,7 +24,7 @@ early_stop_patience: 8
 early_stop_min_delta: 0.001
 
 num_classes: 5
-remap_mscoco_category: True
+remap_mscoco_category: False  #使用自定义数据集，请将此值设为False
 output_dir: ./output/dfine_s_dronevehicle_obb_fusion
 eval_spatial_size: [640, 640]
 
