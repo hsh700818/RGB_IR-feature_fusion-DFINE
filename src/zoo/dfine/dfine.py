@@ -259,7 +259,7 @@ class ScaleGate(nn.Module):
 
 class AdvancedMultimodalFusion(nn.Module):
     """
-    AAF + optional CMI + optional DCA + scale-aware DFS-lite gate + optional GLSA.
+    AAF + optional CMI + DCA + scale-aware DFS-lite gate + optional GLSA.
 
     Ablation flags:
       use_cmi   - CrossModalInteraction on this level
@@ -273,7 +273,7 @@ class AdvancedMultimodalFusion(nn.Module):
     """
 
     def __init__(self, ch, use_cmi=True, max_tokens=196, use_illum=True, use_glsa=True,
-                 use_dca=False, ir_bias: float = 0.0):
+                 use_dca=True, ir_bias: float = 0.0):
         super().__init__()
         self.use_cmi = bool(use_cmi)
         self.use_dca = bool(use_dca)
@@ -357,7 +357,7 @@ class DFINE(nn.Module):
         fusion_use_cmi: bool = True,
         fusion_use_illum: bool = True,
         fusion_use_glsa: bool = True,
-        fusion_use_dca: bool = False,
+        fusion_use_dca: bool = True,
     ):
         super().__init__()
         self.backbone = backbone
