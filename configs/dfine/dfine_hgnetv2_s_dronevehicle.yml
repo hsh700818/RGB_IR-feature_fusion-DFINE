@@ -125,7 +125,7 @@ optimizer:
   type: AdamW
   params:
     - {params: '^(?=.*backbone)(?!.*norm|bn).*$', lr: 0.00004}
-    - {params: '^(?=.*(?:fusion_layers|glsa|illum_extract|alignment|rgb_enhance|ir_enhance|scale_gate)).*$', lr: 0.0004}
+    - {params: '^(?=.*(?:fusion_layers|glsa|illum_extract|alignment|rgb_enhance|ir_enhance|scale_gate)).*$', lr: 0.0001}
     - {params: '^(?=.*(?:encoder|decoder))(?!.*(?:norm|bn|bias)).*$', lr: 0.0002}
   weight_decay: 0.0001
 
